@@ -693,8 +693,8 @@
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
       const folder=e.target.closest('[data-folder]');
-      const note=e.target.closest('[data-note-id],[data-tab]');
       const editor=e.target.closest('#rich-editor,#note-title');
+      const note=editor?null:e.target.closest('[data-note-id],[data-tab]');
       if(folder){showMenu(e.clientX,e.clientY,folderOptions(folder.dataset.folder),{folder:folder.dataset.folder});return;}
       if(note){const id=note.dataset.noteId||note.dataset.tab,n=findNote(id);
         if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
