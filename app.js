@@ -77,7 +77,7 @@
         folder:String(n.folder||'Inbox').slice(0,100),
         html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
         updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
-        starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted
+        starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
       }))
     };
   }
@@ -89,7 +89,7 @@
   try{ui=JSON.parse(localStorage.getItem(VIEW)||'{}')||{};}catch(e){ui={};}
   const folderKey=folder=>'folder:'+folder;
   const isFolderTab=id=>typeof id==='string'&&id.startsWith('folder:');
-  const tabExists=id=>isFolderTab(id)?(id==='folder:Inbox'||state.folders.includes(id.slice(7))):!!state.notes.find(n=>n.id===id&&!n.deleted);
+  const tabExists=id=>isFolderTab(id)?(id==='folder:Inbox'||state.folders.includes(id.slice(7))):!!state.notes.find(n=>n.id===id&&!n.deleted&&!n.purged);
   let tabs=(Array.isArray(ui.tabs)?ui.tabs:[]).filter(tabExists);
   let selected=state.notes.some(n=>n.id===ui.selected)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
   let activeTab=tabExists(ui.activeTab)?ui.activeTab:selected;
@@ -111,7 +111,7 @@
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
   const current=()=>state.notes.find(n=>n.id===selected)||null;
-  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived);
+  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived&&!n.purged);
   const findNote=id=>state.notes.find(n=>n.id===id);
   const timeAgo=date=>{
     const seconds=Math.max(0,Math.floor((Date.now()-Date.parse(date||stamp()))/1000));
@@ -207,19 +207,19 @@
     const quick=[['inbox','Inbox','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
-      ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted).length],
+      ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted&&!n.purged).length],
       ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
     $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'"><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
-    let notes=filter==='trash'?state.notes.filter(n=>n.deleted):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted):live;
+    let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
     if(filter==='inbox')notes=notes.filter(n=>n.folder==='Inbox');
     if(filter.startsWith('folder:'))notes=notes.filter(n=>n.folder===filter.slice(7));
     if(search.trim()){
       const q=search.toLocaleLowerCase();
-      notes=state.notes.filter(n=>!n.deleted&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
+      notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
     }
     notes.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
     $('notes-total').textContent=notes.length;
@@ -438,6 +438,7 @@
     {ico:'trash',label:n.deleted?'Delete permanently':'Move to trash',action:'delete-note',danger:true},
     ...(n.deleted?[{ico:'refresh',label:'Restore',action:'restore-note'}]:[])
   ];
+  const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
     {ico:'edit',label:'Rename folder',action:'folder-rename'},
@@ -459,7 +460,7 @@
   ];
   const tabBlankOptions=()=>[
     {ico:'plus',label:'New note in tab',action:'new-note'},
-    ...(lastClosedTab&&findNote(lastClosedTab)?[{ico:'refresh',label:'Reopen closed tab',action:'restore-tab'}]:[]),
+    ...(lastClosedTab&&tabExists(lastClosedTab)?[{ico:'refresh',label:'Reopen closed tab',action:'restore-tab'}]:[]),
     {ico:'file',label:'Close active tab',action:'close-tab'},
     {ico:'x',label:'Close other tabs',action:'close-other-tabs'},
     {divider:true},
@@ -621,19 +622,24 @@
     {ico:'check',label:'Spelling & suggestions',action:'spellcheck-help'},
     {ico:'search',label:'Find in this note',action:'find-note'}
   ];
-  function selectFolder(folder){filter='folder:'+folder;search='';$('search').value='';renderSidebar();closePanels();}
+  function selectFolder(folder){openFolder(folder);}
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||newName==='Inbox'||state.folders.includes(newName)){showToast('Choose a unique folder name');return;}
     state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
-    persist();renderAll();showToast('Folder renamed');
+    tabs=tabs.map(id=>id===folderKey(old)?folderKey(newName):id);
+    if(activeTab===folderKey(old))activeTab=folderKey(newName);
+    if(lastClosedTab===folderKey(old))lastClosedTab=folderKey(newName);
+    if(collapsedGroups.delete(old))collapsedGroups.add(newName);
+    if(showAllGroups.delete(old))showAllGroups.add(newName);
+    persist();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
     state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
-    if(filter==='folder:'+folder)filter='inbox';persist();renderAll();showToast('Notes moved to Inbox');
+    if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Inbox');
   }
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
@@ -641,12 +647,26 @@
     if(action.startsWith('spell-apply-')){applyCorrection(context,Number(action.slice(12)));return;}
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
+      case 'open-trash':setFilter('trash');break;
+      case 'empty-trash':{
+        const pending=state.notes.filter(item=>item.deleted&&!item.purged);
+        if(!pending.length){showToast('Trash is already empty');break;}
+        const ok=await confirmAction('Empty Trash?','Permanently delete '+pending.length+' notes? You cannot undo this. Consider exporting a backup first.');
+        if(!ok)break;
+        const now=stamp();
+        pending.forEach(item=>{item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.starred=false;item.archived=false;item.updatedAt=now;});
+        const removed=new Set(pending.map(item=>item.id));
+        tabs=tabs.filter(id=>!removed.has(id));
+        if(removed.has(selected))selected=visible()[0]?.id||null;
+        if(removed.has(activeTab))activeTab=tabs.at(-1)||selected;
+        persist();saveUi();renderAll();showToast(pending.length+' notes permanently deleted');
+      }break;
       case 'new-note':newNote();break;
       case 'new-folder':$('new-folder').click();break;
       case 'settings':settingsOpen();break;
-      case 'close-tab':if(selected)closeTab(selected);break;
-      case 'close-other-tabs':if(selected){tabs=[selected];saveUi();noteTabs();}break;
-      case 'restore-tab':if(lastClosedTab&&findNote(lastClosedTab)){openNote(lastClosedTab);lastClosedTab=null;saveUi();}break;
+      case 'close-tab':if(activeTab)closeTab(activeTab);break;
+      case 'close-other-tabs':if(activeTab){tabs=[activeTab];saveUi();noteTabs();}break;
+      case 'restore-tab':if(lastClosedTab&&tabExists(lastClosedTab)){openTab(lastClosedTab);lastClosedTab=null;saveUi();}break;
       case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
@@ -657,10 +677,12 @@
       case 'delete-note':if(n){
         if(n.deleted){
           if(!await confirmAction('Permanently delete?','This note cannot be restored.'))return;
-          state.notes=state.notes.filter(x=>x.id!==n.id);tabs=tabs.filter(id=>id!==n.id);
-        }else{n.deleted=true;n.updatedAt=stamp();tabs=tabs.filter(id=>id!==n.id);}
+          n.purged=true;n.deleted=true;n.html='';n.title='Deleted note';n.updatedAt=stamp();
+        }else{n.deleted=true;n.updatedAt=stamp();}
+        tabs=tabs.filter(id=>id!==n.id);
         if(selected===n.id)selected=visible()[0]?.id||null;
-        if(selected&&!tabs.includes(selected))tabs.push(selected);
+        if(activeTab===n.id)activeTab=tabs.at(-1)||selected;
+        if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
         persist();saveUi();renderAll();showToast('Note removed');
       }break;
       case 'export-note':if(n)exportNote(n);break;
@@ -904,15 +926,32 @@
     $('quick-links').addEventListener('click',e=>{
       const b=e.target.closest('[data-filter]');if(b)setFilter(b.dataset.filter);
     });
-    $('folder-list').addEventListener('click',e=>{
+    $('folder-list').addEventListener('click',async e=>{
       if(Date.now()<skipClickUntil)return;
-      const b=e.target.closest('[data-folder]');if(b)selectFolder(b.dataset.folder);
+      const rename=e.target.closest('[data-rename-folder]');
+      if(rename){
+        const folder=rename.dataset.renameFolder;
+        const result=await ask('Rename folder','Folder name',folder);
+        if(result!==null)folderRename(folder,result.trim());return;
+      }
+      const b=e.target.closest('[data-folder]');if(b)openFolder(b.dataset.folder);
+    });
+    $('folder-view').addEventListener('click',e=>{
+      const card=e.target.closest('[data-folder-note]');
+      if(card){openNote(card.dataset.folderNote);return;}
+      const add=e.target.closest('[data-new-in-folder]');
+      if(add)newNote(add.dataset.newInFolder);
     });
     $('note-list').addEventListener('click',e=>{
       if(Date.now()<skipClickUntil)return;
       const group=e.target.closest('[data-group-toggle]');
       if(group){const name=group.dataset.groupToggle;
         if(collapsedGroups.has(name))collapsedGroups.delete(name);else collapsedGroups.add(name);
+        saveUi();renderSidebar();return;
+      }
+      const showAll=e.target.closest('[data-show-group]');
+      if(showAll){const folder=showAll.dataset.showGroup;
+        if(showAllGroups.has(folder))showAllGroups.delete(folder);else showAllGroups.add(folder);
         saveUi();renderSidebar();return;
       }
       const expand=e.target.closest('[data-expand-note]');
@@ -927,7 +966,7 @@
     });
     $('open-tabs').addEventListener('click',e=>{
       const close=e.target.closest('[data-close-tab]');if(close){closeTab(close.dataset.closeTab);return;}
-      const tab=e.target.closest('[data-tab]');if(tab)openNote(tab.dataset.tab);
+      const tab=e.target.closest('[data-tab]');if(tab)openTab(tab.dataset.tab);
     });
     // A custom in-app context menu replaces the browser menu throughout the workspace.
     // Shift + right-click remains available for native browser spelling suggestions.
@@ -936,12 +975,16 @@
       if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
-      const folder=e.target.closest('[data-folder]');
+      const folder=e.target.closest('[data-folder],[data-rename-folder]');
+      const trash=e.target.closest('[data-filter="trash"]');
       const editor=e.target.closest('#rich-editor,#note-title');
-      const note=editor?null:e.target.closest('[data-note-id],[data-tab]');
-      if(folder){showMenu(e.clientX,e.clientY,folderOptions(folder.dataset.folder),{folder:folder.dataset.folder});return;}
-      if(note){const id=note.dataset.noteId||note.dataset.tab,n=findNote(id);
-        if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
+      const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
+      if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
+      if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder;
+        showMenu(e.clientX,e.clientY,folderOptions(name),{folder:name});return;}
+      if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote;
+        if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
+        const n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
       if(editor){
         const input=editor.id==='note-title',start=input?editor.selectionStart:null,end=input?editor.selectionEnd:null;
         if(!input)saveSelection();
@@ -956,14 +999,16 @@
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab]');
+      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"]');
       if(!target)return;
       clearTimeout(longTimer);
       longTimer=setTimeout(()=>{
-        if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
+        if(target.dataset.filter==='trash')showMenu(e.clientX,e.clientY,trashOptions(),{});
+        else if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
         else if(target.dataset.noteId||target.dataset.tab){
           const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
-          if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
+          if(isFolderTab(id))showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});
+          else if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
         }
         skipClickUntil=Date.now()+650;navigator.vibrate?.(12);
       },520);
