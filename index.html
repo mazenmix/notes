@@ -146,7 +146,7 @@
       <div><span class="settings-section-label">APPEARANCE</span><p>Writing theme</p><span id="theme-mode">Dark mode</span></div>
       <button class="appearance-button" id="settings-theme-toggle" type="button"><svg><use href="#i-sun"/></svg> Switch to light</button>
     </section>
-    <div class="form-grid"><label>Supabase project URL<input id="supabase-url" type="url" placeholder="https://your-project.supabase.co" autocomplete="off"/></label><label>Publishable / anon key<input id="supabase-key" type="text" placeholder="sb_publishable_... or eyJ..." autocomplete="off"/></label><label>Email<input id="auth-email" type="email" placeholder="you@example.com" autocomplete="username"/></label><label>Password<input id="auth-password" type="password" placeholder="Your Supabase account password" autocomplete="current-password"/></label></div>
+    <div class="form-grid" id="cloud-login-fields"><label>Supabase project URL<input id="supabase-url" type="url" placeholder="https://your-project.supabase.co" autocomplete="off"/></label><label>Publishable / anon key<input id="supabase-key" type="text" placeholder="sb_publishable_... or eyJ..." autocomplete="off"/></label><label>Email<input id="auth-email" type="email" placeholder="you@example.com" autocomplete="username"/></label><label>Password<input id="auth-password" type="password" placeholder="Your Supabase account password" autocomplete="current-password"/></label></div>
     <div class="modal-actions"><button class="primary" id="sign-in">Sign in & sync</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
     <p class="form-feedback" id="auth-feedback" role="status"></p>
     <hr class="modal-rule"/>
