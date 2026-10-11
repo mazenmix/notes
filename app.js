@@ -183,7 +183,7 @@
   let expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
-  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f)):[];
+  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
   // Previous releases auto-pinned every folder. Switch once to explicit-only
   // pins without touching saved folders, notes or D1 workspace data.
   const EXPLICIT_PINS_KEY='mxnotes.pins.explicit.20261011';
@@ -379,10 +379,10 @@
     if(searchFocus)setTimeout(()=>$('search').focus(),60);
   }
   function renderSidebar(){
-    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f));
-    const live=visible(),pinSet=new Set(pinnedFolders),parent=name=>folderParent(name);
+    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
+    const sortedPins=pinnedFolders.filter(name=>!folderTrashed(name));
+    const live=visible(),pinSet=new Set(sortedPins),parent=name=>folderParent(name);
     const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name)&&!folderTrashed(name));
-    const sortedPins=pinnedFolders.filter(name=>state.folders.includes(name));
     const renderPinned=(folder,depth=0,seen=new Set())=>{
       if(seen.has(folder)||depth>12)return '';
       const visited=new Set(seen);visited.add(folder);
@@ -896,9 +896,57 @@
     if(!response.ok)throw Error(data.error||'Upload failed');
     return data;
   }
+  // Freeze an independent caret Range before the OS file picker steals focus.
+  // The global savedSelection changes during asynchronous uploads and must not
+  // be used to place attachments once the picker closes.
+  let attachmentInsertion=null,attachmentPointerCaptured=false;
+  function captureAttachmentInsertion(){
+    const note=current(),editor=$('rich-editor'),sel=window.getSelection();
+    if(!note)return;
+    let range=null;
+    if(sel?.rangeCount&&editor.contains(sel.anchorNode)&&editor.contains(sel.focusNode))
+      range=sel.getRangeAt(0).cloneRange();
+    else if(savedSelection&&editor.contains(savedSelection.startContainer))
+      range=savedSelection.cloneRange();
+    if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
+    attachmentInsertion={noteId:note.id,range};
+  }
+  function insertAttachmentAtSavedCaret(markup){
+    const bookmark=attachmentInsertion,note=bookmark&&findNote(bookmark.noteId);
+    if(!note||note.deleted||note.purged){showToast('Original note unavailable');return false;}
+    // Never insert into another note if a tab was changed while uploading.
+    if(current()?.id!==note.id){
+      note.html=safeHtml((note.html||'')+markup);
+      note.updatedAt=stamp();persist();renderSidebar();renderDesktopNotes();renderIos();
+      return true;
+    }
+    const editor=$('rich-editor'),range=bookmark.range;
+    editor.focus({preventScroll:true});
+    if(range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)){
+      const sel=window.getSelection();
+      sel.removeAllRanges();sel.addRange(range.cloneRange());
+      const inserted=document.execCommand('insertHTML',false,markup);
+      if(!inserted){
+        const live=sel.getRangeAt(0);
+        live.deleteContents();
+        const fragment=live.createContextualFragment(markup),last=fragment.lastChild;
+        live.insertNode(fragment);
+        if(last){live.setStartAfter(last);live.collapse(true);sel.removeAllRanges();sel.addRange(live);}
+      }
+    }else{
+      // A re-render invalidated the Range: append to THIS note, not its top.
+      editor.insertAdjacentHTML('beforeend',markup);
+      const sel=window.getSelection(),end=document.createRange();
+      end.selectNodeContents(editor);end.collapse(false);
+      sel.removeAllRanges();sel.addRange(end);
+    }
+    const sel=window.getSelection();
+    if(sel?.rangeCount)bookmark.range=sel.getRangeAt(0).cloneRange();
+    hydrateAssets();onEditorInput();saveSelection();return true;
+  }
   async function insertAttachments(files){
     if(!files?.length)return;
-    saveSelection();
+    if(!attachmentInsertion)captureAttachmentInsertion();
     for(const file of files){
       try{
         showToast('Uploading '+file.name+'…');
@@ -908,9 +956,10 @@
           '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="240" contenteditable="false">'+
           (image?'<img data-asset-image="'+esc(data.id)+'" alt="Attached image">':'<span>📎 '+esc(data.name)+'</span>')+
           (image?'':'<figcaption>'+esc(data.name)+'</figcaption>')+'</figure><p><br></p>';
-        insertAtCursor(figure);showToast('Attached '+file.name);
+        if(insertAttachmentAtSavedCaret(figure))showToast('Attached '+file.name);
       }catch(error){showToast(error.message);}
     }
+    attachmentInsertion=null;
     $('attachment-input').value='';
   }
   function resizeAsset(figure,direction){
@@ -1082,7 +1131,8 @@
     });
   }
   function hideContext(){$('context-menu').hidden=true;$('context-menu').classList.remove('visible');menuContext=null;}
-  const noteOptions=n=>[
+  const noteOptions=n=>n.deleted?
+    [{ico:'refresh',label:'Restore to original folder',action:'restore-note'}]:[
     {ico:'edit',label:'Rename',action:'rename-note'},
     {ico:'file',label:'Open in tab',action:'open-note'},
     {ico:'star',label:n.starred?'Remove favorite':'Add to favorites',action:'star-note'},
@@ -1091,10 +1141,23 @@
     {divider:true},
     {ico:'archive',label:n.archived?'Unarchive':'Archive',action:'archive-note'},
     {ico:'download',label:'Export HTML',action:'export-note'},
-    ...(n.deleted?[{ico:'refresh',label:'Restore from Trash',action:'restore-note'}]:
-      [{ico:'trash',label:'Move to Trash',action:'delete-note',danger:true}])
+    {ico:'trash',label:'Move to Trash',action:'delete-note',danger:true}
   ];
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
+  const deletedFolderOptions=()=>[{ico:'refresh',label:'Restore folder to original location',action:'folder-restore'}];
+  function restoreFolderChain(folder){
+    let changed=false;
+    const seen=new Set();
+    for(let name=folder;name&&name!=='Inbox'&&!seen.has(name);name=folderParent(name)){
+      seen.add(name);
+      if(!state.folders.includes(name)||state.folderTrash?.[name]?.purged)break;
+      if(state.folderTrash?.[name]?.deleted){
+        state.folderTrash[name]={deleted:false,purged:false,updatedAt:stamp()};
+        changed=true;
+      }
+    }
+    return changed;
+  }
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
     {ico:'star',label:pinnedFolders.includes(folder)?'Unpin folder':'Pin folder',action:pinnedFolders.includes(folder)?'folder-unpin':'folder-pin'},
@@ -1415,7 +1478,8 @@
     tabs=tabs.filter(id=>id!==folderKey(folder)&&!hiddenNoteIds.has(id));
     if(activeTab===folderKey(folder)||hiddenNoteIds.has(activeTab))activeTab=tabs.at(-1)||visible()[0]?.id||null;
     if(hiddenNoteIds.has(selected))selected=visible()[0]?.id||null;
-    pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    // Keep its pinned shortcut in local UI state; simply hide it while trashed,
+    // so restoring the folder also restores its original pinned placement.
     markOrganizationChanged();saveUi();renderAll();showToast('Folder moved to Trash');
   }
   async function runAction(action,context) {
@@ -1439,9 +1503,11 @@
     }
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
-      case 'folder-restore':if(folder&&state.folderTrash?.[folder]?.deleted){
-        state.folderTrash[folder]={deleted:false,purged:false,updatedAt:stamp()};
-        markOrganizationChanged();renderAll();showToast('Folder restored');
+      case 'folder-restore':if(folder&&state.folderTrash?.[folder]?.deleted&&!state.folderTrash?.[folder]?.purged){
+        if(restoreFolderChain(folder)){
+          markOrganizationChanged();renderAll();
+          showToast('Folder restored to its original location');
+        }
       }break;
       case 'asset-open':if(context?.assetId){
         try{
@@ -1496,7 +1562,16 @@
       case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}if(moveNote(n.id,f))showToast('Note moved');}break;
       case 'copy-note-link':if(n){await navigator.clipboard.writeText('[['+n.title+']]');showToast('Note link copied');}break;
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
-      case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
+      case 'restore-note':{
+        const target=context?.id?findNote(context.id):null;
+        if(!target?.deleted||target.purged)break;
+        if(target.folder!=='Inbox'&&!state.folders.includes(target.folder))target.folder='Inbox';
+        const restoredParent=restoreFolderChain(target.folder);
+        target.deleted=false;target.updatedAt=stamp();
+        if(restoredParent)markOrganizationChanged();
+        else persist();
+        renderAll();showToast('Note restored to '+folderLabel(target.folder));
+      }break;
       case 'delete-note':if(n){
         if(n.deleted){showToast('Use Empty Trash to delete permanently');return;}
         n.deleted=true;n.updatedAt=stamp();
@@ -1946,14 +2021,19 @@
       if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
+      const restoredFolder=e.target.closest('[data-restore-folder]');
+      if(restoredFolder){
+        showMenu(e.clientX,e.clientY,deletedFolderOptions(),{folder:restoredFolder.dataset.restoreFolder});
+        return;
+      }
       const folder=e.target.closest('[data-folder],[data-rename-folder],[data-group-toggle]');
       const trash=e.target.closest('[data-filter="trash"],#trash-link');
       const editor=e.target.closest('#rich-editor,#note-title');
-      const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
+      const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note],[data-desktop-note],[data-ios-note]');
       if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
       if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder||folder.dataset.groupToggle;
         showMenu(e.clientX,e.clientY,folderOptions(name),{folder:name});return;}
-      if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote;
+      if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote||note.dataset.desktopNote||note.dataset.iosNote;
         if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
         const n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
       if(editor){
@@ -1978,7 +2058,7 @@
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"],#trash-link');
+      const target=e.target.closest('[data-restore-folder],[data-folder],[data-note-id],[data-tab],[data-desktop-note],[data-ios-note],[data-filter="trash"],#trash-link');
       const tableCell=e.target.closest('#rich-editor td,#rich-editor th');
       const codeBlock=e.target.closest('#rich-editor pre[data-code-block]');
       if(!target&&!tableCell&&!codeBlock)return;
@@ -1986,10 +2066,11 @@
       longTimer=setTimeout(()=>{
         if(tableCell)showMenu(e.clientX,e.clientY,tableOptions(),{cell:tableCell});
         else if(codeBlock)showMenu(e.clientX,e.clientY,codeOptions(),{codeBlock});
+        else if(target.dataset.restoreFolder)showMenu(e.clientX,e.clientY,deletedFolderOptions(),{folder:target.dataset.restoreFolder});
         else if(target.dataset.filter==='trash'||target.id==='trash-link')showMenu(e.clientX,e.clientY,trashOptions(),{});
         else if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
-        else if(target.dataset.noteId||target.dataset.tab){
-          const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
+        else if(target.dataset.noteId||target.dataset.tab||target.dataset.desktopNote||target.dataset.iosNote){
+          const id=target.dataset.noteId||target.dataset.tab||target.dataset.desktopNote||target.dataset.iosNote,n=findNote(id);
           if(isFolderTab(id))showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});
           else if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
         }
@@ -2015,10 +2096,23 @@
       const code=e.target.closest('pre[data-code-block]>code');
       if(code)setTimeout(()=>{if(code.isConnected&&!code.contains(document.activeElement)){colorizeCode(code);onEditorInput();}},40);
     });
-    [['attach-file',()=>{saveSelection();$('attachment-input').click();}],
+    [['attach-file',()=>{$('attachment-input').click();}],
      ['insert-table',insertTable],['insert-code',insertCodeBlock]].forEach(([id,cb])=>{
-      $(id).addEventListener('pointerdown',event=>{if(event.pointerType!=='touch')event.preventDefault();saveSelection();});
-      $(id).addEventListener('click',cb);
+      $(id).addEventListener('pointerdown',event=>{
+        if(id==='attach-file'){
+          captureAttachmentInsertion();
+          attachmentPointerCaptured=true;
+        }
+        if(event.pointerType!=='touch')event.preventDefault();
+        saveSelection();
+      });
+      $(id).addEventListener('click',()=>{
+        if(id==='attach-file'){
+          if(!attachmentPointerCaptured)captureAttachmentInsertion();
+          attachmentPointerCaptured=false;
+        }
+        cb();
+      });
     });
     $('attachment-input').addEventListener('change',e=>insertAttachments([...e.target.files]));
     editor.addEventListener('click',async event=>{
