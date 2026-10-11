@@ -507,6 +507,38 @@
     الضاهر:'الظاهر',الظابط:'الضابط',الغه:'اللغة',
     الاخطااء:'الأخطاء',الكلماات:'الكلمات'
   };
+  Object.assign(autoFixPairs,{
+    transportationn:'transportation',transportaion:'transportation',transportaton:'transportation',
+    achivement:'achievement',acheivement:'achievement',acheivment:'achievement',
+    acess:'access',acesss:'access',accomodate:'accommodate',
+    acommodate:'accommodate',arguement:'argument',arguements:'arguments',
+    basicly:'basically',beutiful:'beautiful',beautifull:'beautiful',
+    commited:'committed',committment:'commitment',conection:'connection',
+    conected:'connected',conected:'connected',curiousity:'curiosity',
+    decison:'decision',developement:'development',diffrent:'different',
+    differnt:'different',dissapear:'disappear',embarass:'embarrass',
+    embarassing:'embarrassing',existance:'existence',experiance:'experience',
+    exellent:'excellent',explaination:'explanation',extention:'extension',
+    febuary:'february',finaly:'finally',foriegn:'foreign',
+    fourty:'forty',gramatically:'grammatically',happend:'happened',
+    happendd:'happened',heigth:'height',improvment:'improvement',
+    intresting:'interesting',intrested:'interested',knowlege:'knowledge',
+    learing:'learning',lisence:'license',maintainance:'maintenance',
+    managment:'management',neccesary:'necessary',noticable:'noticeable',
+    occassion:'occasion',ocassion:'occasion',oppurtunity:'opportunity',
+    oportunity:'opportunity',paralell:'parallel',perfomance:'performance',
+    persistant:'persistent',personnal:'personal',privelege:'privilege',
+    profesion:'profession',profesional:'professional',pronounciation:'pronunciation',
+    recomend:'recommend',reccomend:'recommend',relevent:'relevant',
+    remmember:'remember',responsiblity:'responsibility',restaraunt:'restaurant',
+    securty:'security',similiar:'similar',sincerly:'sincerely',
+    succesfully:'successfully',sucessfully:'successfully',surpise:'surprise',
+    throught:'through',transfered:'transferred',truely:'truly',
+    unfortunatly:'unfortunately',unneccessary:'unnecessary',usefull:'useful',
+    vaccum:'vacuum',wether:'whether',writter:'writer',
+    الإملائيه:'الإملائية',المجموعه:'المجموعة',الكومبيوتر:'الكمبيوتر',
+    المعلوماتت:'المعلومات',الرساله:'الرسالة',الصفحه:'الصفحة',التطبيقق:'التطبيق'
+  });
   const correctionPairs={
     teh:'the',adn:'and',thier:'their',recieve:'receive',recieved:'received',
     acheive:'achieve',beleive:'believe',becuase:'because',becouse:'because',
