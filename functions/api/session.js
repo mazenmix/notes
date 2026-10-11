@@ -1,7 +1,15 @@
 import {configured,json,originMatches,signSession,validSession,setCookie,removeCookie,fingerprint,passwordsMatch,readBody} from '../_lib/owner.js';
 
 export async function onRequestGet({request,env}) {
-  if(!configured(env))return json({configured:false,authenticated:false});
+  if(!configured(env))return json({
+    configured:false,
+    authenticated:false,
+    checks:{
+      d1Binding:Boolean(env.DB),
+      notesPasswordValid:typeof env.NOTES_PASSWORD==='string'&&env.NOTES_PASSWORD.length>=12,
+      sessionSecretValid:typeof env.SESSION_SECRET==='string'&&env.SESSION_SECRET.length>=32
+    }
+  });
   const authenticated=await validSession(request,env);
   return json({configured:true,authenticated});
 }
