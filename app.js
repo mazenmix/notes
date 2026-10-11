@@ -607,7 +607,7 @@
     n.updatedAt=stamp();persist();updateSummary();
     // Keep the editor and cursor completely untouched while typing.
     clearTimeout(uiRenderTimer);
-    uiRenderTimer=setTimeout(()=>{renderSidebar();},350);
+    uiRenderTimer=setTimeout(()=>{renderSidebar();renderDesktopNotes();renderIos();},350);
   }
   function onTitleInput(){
     const n=current();if(!n)return;
