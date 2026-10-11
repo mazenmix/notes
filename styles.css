@@ -564,3 +564,64 @@ html,body{overflow:hidden}
   .editing .editor-pane{padding-bottom:calc(55px + env(safe-area-inset-bottom,0px))}
 }
 @media(max-width:400px){.writing-controls{padding-inline:8px}}
+
+
+/* Folder tabs, pinned-folder actions and compact note navigation */
+.pinned-folder-row{display:flex;align-items:center;min-width:0;padding-inline-end:3px;border-radius:9px}
+.pinned-folder-row .folder-item{flex:1;min-width:0;margin-inline-end:0}
+.pinned-folder-row .folder-rename-btn{flex:0 0 28px;width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:#8d99a7;opacity:0;transition:opacity .16s,color .16s,background .16s}
+.pinned-folder-row:hover .folder-rename-btn,.pinned-folder-row:focus-within .folder-rename-btn{opacity:1}
+.pinned-folder-row .folder-rename-btn:hover{background:#2b3642;color:#ebf1f7}
+.pinned-folder-row .folder-rename-btn svg{width:14px;height:14px}
+.pinned-folder-row.active{background:#262c33}
+.notes-show-more{display:block;width:100%;border:0;background:transparent;color:#91a8bf;font-size:11px;text-align:start;padding:8px 12px 9px 29px;border-radius:8px}
+.notes-show-more:hover{background:#27303a;color:#e3edf6}
+.folder-view{width:100%;max-width:none;padding:39px clamp(20px,2.7vw,42px) 100px;margin:0;min-height:100%;color:var(--ink)}
+.folder-view-head{display:flex;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:26px;border-bottom:1px solid var(--line);padding:2px 0 27px}
+.folder-view-head .editor-eyebrow{flex:0 0 100%;margin:0;letter-spacing:.12em}
+.folder-view-head h1{margin:0;font:650 clamp(28px,2.7vw,39px)/1.3 var(--writing-font);letter-spacing:-.03em;flex:1;min-width:120px;unicode-bidi:plaintext}
+.folder-create{height:36px;border:1px solid #3b4a58;border-radius:9px;display:flex;align-items:center;gap:8px;padding:0 13px;background:#222b35;font-size:12px;color:#dce7f0}
+.folder-create:hover{background:#2b3a49}
+.folder-create svg{width:15px;height:15px}
+.folder-view-list{display:grid;gap:7px;max-width:1060px;width:100%}
+.folder-note-card{display:flex;gap:14px;align-items:center;text-align:start;min-height:70px;width:100%;padding:12px 17px;background:#181e24;border:1px solid #29323d;border-radius:12px;transition:background-color .16s,border-color .16s,transform .16s}
+.folder-note-card:hover{background:#242e39;border-color:#43586b;transform:translateY(-1px)}
+.folder-card-icon{display:grid;place-items:center;flex:none;color:#91a9c2}
+.folder-card-icon svg{width:18px;height:18px}
+.folder-card-detail{display:flex;flex:1;min-width:0;flex-direction:column;gap:6px}
+.folder-card-detail strong{font-size:13px;font-weight:600;color:#e0e7ee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:start;unicode-bidi:plaintext}
+.folder-card-detail small{color:#8697a7;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:start;unicode-bidi:plaintext}
+.folder-note-card time{color:#8997a5;white-space:nowrap;font-size:10px;font-weight:500}
+.folder-drafts{max-width:1060px;width:100%;margin:23px 0}
+.folder-drafts summary{display:flex;align-items:center;gap:9px;border-radius:9px;padding:13px 12px;color:#9bacbd;cursor:pointer;font-size:12px;border:1px solid #2c343d}
+.folder-drafts summary:hover{background:#222b34}
+.folder-drafts summary svg{width:16px;height:16px;transition:transform .18s;transform:rotate(-90deg)}
+.folder-drafts[open] summary svg{transform:rotate(0)}
+.folder-drafts summary span{margin-left:auto;border-radius:6px;background:#26313b;padding:2px 7px;color:#b5c6d7;font-variant-numeric:tabular-nums}
+.folder-drafts .folder-view-list{margin-top:8px}
+.folder-empty{padding:36px 10px;color:#8797a6;font-size:13px}
+body.folder-tab-active .writing-controls{visibility:hidden;pointer-events:none}
+body.folder-tab-active .editor-footer{visibility:hidden}
+.autocorrect-setting{margin:0 0 14px;padding:13px 15px;border:1px solid #353c45;border-radius:11px;background:#1a2026;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.autocorrect-setting label{display:flex;flex-direction:column;gap:7px;font-size:12px;line-height:1.5;cursor:pointer;color:#d6e0eb}
+.autocorrect-setting input{width:18px;height:18px;accent-color:#85b5dc;cursor:pointer;flex:none}
+[data-theme="light"] .pinned-folder-row.active{background:#dce7ef}
+[data-theme="light"] .folder-note-card{background:#f7fafc;border-color:#d6e0e8}
+[data-theme="light"] .folder-note-card:hover{background:#eaf2f8;border-color:#aabfd0}
+[data-theme="light"] .folder-card-detail strong{color:#2f4357}
+[data-theme="light"] .folder-note-card time,[data-theme="light"] .folder-card-detail small{color:#6b8296}
+[data-theme="light"] .folder-drafts summary{border-color:#d4e0eb}
+[data-theme="light"] .folder-drafts summary:hover{background:#eaf1f7}
+[data-theme="light"] .folder-drafts summary span{background:#e2edf5;color:#536d80}
+[data-theme="light"] .autocorrect-setting{background:#f1f6f9;border-color:#d4dfe7}
+[data-theme="light"] .autocorrect-setting label{color:#334d64}
+@media(hover:none){.pinned-folder-row .folder-rename-btn{opacity:1}}
+@media(max-width:760px){
+  .folder-view{padding:28px 18px 120px}
+  .folder-view-head{gap:12px;padding-bottom:19px;margin-bottom:20px}
+  .folder-view-head h1{font-size:29px}
+  .folder-note-card{padding:11px 12px;gap:10px;min-height:65px}
+  .folder-note-card time{font-size:9px;max-width:60px}
+  body.folder-tab-active .mobile-nav{display:flex}
+  body.folder-tab-active .editor-pane{padding-bottom:calc(60px + env(safe-area-inset-bottom,0px))}
+}
