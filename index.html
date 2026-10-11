@@ -88,6 +88,18 @@
       </div>
       <div class="sidebar-foot"><button id="trash-link" class="quick-link trash-bottom" type="button" aria-label="Trash"><svg><use href="#i-trash"/></svg><span>Trash</span><span id="trash-count" class="count"></span></button></div>
     </aside>
+    <section class="desktop-notes-panel" id="desktop-notes-panel" aria-label="Notes list">
+      <div class="desktop-notes-search">
+        <svg><use href="#i-search"/></svg>
+        <input id="desktop-note-search" type="search" aria-label="Search all notes" placeholder="Search all notes" />
+      </div>
+      <div class="desktop-notes-header">
+        <h2 id="desktop-folder-label">All Notes</h2>
+        <button class="desktop-list-add" id="desktop-compose" type="button" title="New note" aria-label="New note"><svg><use href="#i-edit"/></svg></button>
+      </div>
+      <div class="desktop-notes-scroll" id="desktop-notes-scroll"><div id="desktop-notes-items"></div></div>
+      <div class="desktop-notes-footer"><button id="desktop-new-folder" type="button"><svg><use href="#i-plus"/></svg> New Folder</button></div>
+    </section>
     <main class="editor-pane" id="editor-pane">
       <div class="tabbar desktop-tabbar"><div id="open-tabs" class="open-tabs" role="tablist" aria-label="Open notes"></div><button class="new-tab" id="tab-new" title="Open new note tab" aria-label="New tab"><svg><use href="#i-plus"/></svg></button></div>
       <div class="editor-toolbar">
