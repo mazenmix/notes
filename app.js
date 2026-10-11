@@ -292,10 +292,11 @@
     pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
     const live=visible(),pinSet=new Set(pinnedFolders),parent=name=>folderParent(name);
     const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name));
+    const sortedPins=pinnedFolders.filter(name=>state.folders.includes(name));
     const renderPinned=(folder,depth=0,seen=new Set())=>{
       if(seen.has(folder)||depth>12)return '';
       const visited=new Set(seen);visited.add(folder);
-      const children=sortedFolders.filter(f=>pinSet.has(f)&&parent(f)===folder);
+      const children=sortedPins.filter(f=>pinSet.has(f)&&parent(f)===folder);
       const isCollapsed=collapsedPinnedFolders.has(folder);
       return '<div class="folder-tree-node" data-tree-folder="'+esc(folder)+'" style="--folder-depth:'+depth+'">'+
         '<div class="pinned-folder-row '+(activeTab===folderKey(folder)?'active':'')+'" data-drag-folder="'+esc(folder)+'" draggable="true" title="Drag to nest or reorder">'+
@@ -307,7 +308,7 @@
         (children.length&&!isCollapsed?'<div class="folder-tree-children">'+children.map(c=>renderPinned(c,depth+1,visited)).join('')+'</div>':'')+
       '</div>';
     };
-    const pinnedRoots=sortedFolders.filter(f=>pinSet.has(f)&&!pinSet.has(parent(f)));
+    const pinnedRoots=sortedPins.filter(f=>pinSet.has(f)&&!pinSet.has(parent(f)));
     $('folder-list').innerHTML=pinnedRoots.map(f=>renderPinned(f)).join('');
     const quick=[['all','All Notes','file',live.length],['star','Starred','star',live.filter(n=>n.starred).length]];
     $('trash-count').textContent=state.notes.filter(n=>n.deleted&&!n.purged).length||'';
