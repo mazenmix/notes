@@ -896,9 +896,57 @@
     if(!response.ok)throw Error(data.error||'Upload failed');
     return data;
   }
+  // Freeze an independent caret Range before the OS file picker steals focus.
+  // The global savedSelection changes during asynchronous uploads and must not
+  // be used to place attachments once the picker closes.
+  let attachmentInsertion=null;
+  function captureAttachmentInsertion(){
+    const note=current(),editor=$('rich-editor'),sel=window.getSelection();
+    if(!note)return;
+    let range=null;
+    if(sel?.rangeCount&&editor.contains(sel.anchorNode)&&editor.contains(sel.focusNode))
+      range=sel.getRangeAt(0).cloneRange();
+    else if(savedSelection&&editor.contains(savedSelection.startContainer))
+      range=savedSelection.cloneRange();
+    if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
+    attachmentInsertion={noteId:note.id,range};
+  }
+  function insertAttachmentAtSavedCaret(markup){
+    const bookmark=attachmentInsertion,note=bookmark&&findNote(bookmark.noteId);
+    if(!note||note.deleted||note.purged){showToast('Original note unavailable');return false;}
+    // Never insert into another note if a tab was changed while uploading.
+    if(current()?.id!==note.id){
+      note.html=safeHtml((note.html||'')+markup);
+      note.updatedAt=stamp();persist();renderSidebar();renderDesktopNotes();renderIos();
+      return true;
+    }
+    const editor=$('rich-editor'),range=bookmark.range;
+    editor.focus({preventScroll:true});
+    if(range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)){
+      const sel=window.getSelection();
+      sel.removeAllRanges();sel.addRange(range.cloneRange());
+      const inserted=document.execCommand('insertHTML',false,markup);
+      if(!inserted){
+        const live=sel.getRangeAt(0);
+        live.deleteContents();
+        const fragment=live.createContextualFragment(markup),last=fragment.lastChild;
+        live.insertNode(fragment);
+        if(last){live.setStartAfter(last);live.collapse(true);sel.removeAllRanges();sel.addRange(live);}
+      }
+    }else{
+      // A re-render invalidated the Range: append to THIS note, not its top.
+      editor.insertAdjacentHTML('beforeend',markup);
+      const sel=window.getSelection(),end=document.createRange();
+      end.selectNodeContents(editor);end.collapse(false);
+      sel.removeAllRanges();sel.addRange(end);
+    }
+    const sel=window.getSelection();
+    if(sel?.rangeCount)bookmark.range=sel.getRangeAt(0).cloneRange();
+    hydrateAssets();onEditorInput();saveSelection();return true;
+  }
   async function insertAttachments(files){
     if(!files?.length)return;
-    saveSelection();
+    if(!attachmentInsertion)captureAttachmentInsertion();
     for(const file of files){
       try{
         showToast('Uploading '+file.name+'…');
@@ -908,9 +956,10 @@
           '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="240" contenteditable="false">'+
           (image?'<img data-asset-image="'+esc(data.id)+'" alt="Attached image">':'<span>📎 '+esc(data.name)+'</span>')+
           (image?'':'<figcaption>'+esc(data.name)+'</figcaption>')+'</figure><p><br></p>';
-        insertAtCursor(figure);showToast('Attached '+file.name);
+        if(insertAttachmentAtSavedCaret(figure))showToast('Attached '+file.name);
       }catch(error){showToast(error.message);}
     }
+    attachmentInsertion=null;
     $('attachment-input').value='';
   }
   function resizeAsset(figure,direction){
@@ -2015,10 +2064,17 @@
       const code=e.target.closest('pre[data-code-block]>code');
       if(code)setTimeout(()=>{if(code.isConnected&&!code.contains(document.activeElement)){colorizeCode(code);onEditorInput();}},40);
     });
-    [['attach-file',()=>{saveSelection();$('attachment-input').click();}],
+    [['attach-file',()=>{$('attachment-input').click();}],
      ['insert-table',insertTable],['insert-code',insertCodeBlock]].forEach(([id,cb])=>{
-      $(id).addEventListener('pointerdown',event=>{if(event.pointerType!=='touch')event.preventDefault();saveSelection();});
-      $(id).addEventListener('click',cb);
+      $(id).addEventListener('pointerdown',event=>{
+        if(id==='attach-file')captureAttachmentInsertion();
+        if(event.pointerType!=='touch')event.preventDefault();
+        saveSelection();
+      });
+      $(id).addEventListener('click',()=>{
+        if(id==='attach-file'&&!attachmentInsertion)captureAttachmentInsertion();
+        cb();
+      });
     });
     $('attachment-input').addEventListener('change',e=>insertAttachments([...e.target.files]));
     editor.addEventListener('click',async event=>{
