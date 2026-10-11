@@ -778,7 +778,7 @@
   function selectFolder(folder){openFolder(folder);}
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
-    if(!newName||newName==='Inbox'||state.folders.includes(newName)){showToast('Choose a unique folder name');return;}
+    if(!newName||['inbox','notes'].includes(newName.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===newName.toLocaleLowerCase())){showToast('Choose a unique folder name');return;}
     state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
@@ -792,7 +792,7 @@
   function removeFolder(folder){
     state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
-    if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Inbox');
+    if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Notes');
   }
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
@@ -830,7 +830,7 @@
       case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
-      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Inbox',...state.folders].join(' · '),n.folder);if(name===null)return;const f=['Inbox',...state.folders].find(x=>x.toLowerCase()===name.trim().toLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
+      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
       case 'copy-note-link':if(n){await navigator.clipboard.writeText('[['+n.title+']]');showToast('Note link copied');}break;
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
       case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
@@ -1265,7 +1265,7 @@
       const name=await ask('New folder','Folder name');
       if(!name?.trim())return;
       const f=name.trim().slice(0,90);
-      if(f==='Inbox'||state.folders.includes(f)){showToast('That folder already exists');return;}
+      if(['notes','inbox'].includes(f.toLocaleLowerCase())||state.folders.some(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase())){showToast('That folder already exists');return;}
       state.folders.push(f);state.foldersUpdatedAt=stamp();persist();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
