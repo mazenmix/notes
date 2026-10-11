@@ -9,7 +9,7 @@
   const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',AUTOCORRECT='mxnotes.writing.autocorrect',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
-    version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
+    version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',folderParents:{},folderOrder:[],noteOrder:{},organizationUpdatedAt:'2025-01-01T00:00:00.000Z',
     folders:[],
     notes:[
       {id:'welcome',title:'A calmer mind',folder:'Life',html:'<h2>Thoughts on a simpler life</h2><p>Lately I’ve been thinking a lot about how much calmer life feels when things are simple. Not easier, but simpler. Fewer tabs, fewer commitments, fewer things fighting for my attention.</p><p>It’s not about doing less, but about making space for what actually matters.</p><ul><li>More time for deep work</li><li>A cleaner headspace</li><li>People who feel like home</li><li>A life that feels intentional</li></ul><blockquote>Simplicity is not the absence of things, but the presence of what matters.</blockquote><h2>Related</h2><p>Keep the ideas connected: <a data-note-id="habits">Habits</a> · <a data-note-id="focus">Focus</a> · <a data-note-id="morning">A better morning</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
@@ -88,15 +88,39 @@
     if(!x||!Array.isArray(x.notes))throw Error('Invalid backup');
     const lookup={};
     for(const n of x.notes){if(n?.title && typeof n.id==='string')lookup[String(n.title).trim().toLocaleLowerCase()]=n.id;}
-    return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),foldersUpdatedAt:typeof x.foldersUpdatedAt==='string'?x.foldersUpdatedAt:(x.updatedAt||stamp()),
-      folders:[...new Set((Array.isArray(x.folders)?x.folders:[]).filter(v=>typeof v==='string'&&v.length<100))],
-      notes:x.notes.filter(n=>n&&typeof n.id==='string').slice(0,15000).map(n=>({
-        id:n.id,title:String(n.title||'Untitled').slice(0,400),
-        folder:String(n.folder||'Inbox').slice(0,100),
-        html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
-        updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
-        starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
-      }))
+    const folders=[...new Set((Array.isArray(x.folders)?x.folders:[]).filter(v=>typeof v==='string'&&v.length<100&&v!=='Inbox'))];
+    const folderSet=new Set(folders);
+    const parents={};
+    if(x.folderParents&&typeof x.folderParents==='object'&&!Array.isArray(x.folderParents)){
+      for(const child of folders){
+        const parent=x.folderParents[child];
+        if(typeof parent==='string'&&parent!==child&&folderSet.has(parent))parents[child]=parent;
+      }
+      // Invalid backups cannot create cyclic directory trees.
+      for(const child of folders){
+        const visited=new Set([child]);let parent=parents[child];
+        while(parent){if(visited.has(parent)){delete parents[child];break;}visited.add(parent);parent=parents[parent];}
+      }
+    }
+    const order=[...new Set([...(Array.isArray(x.folderOrder)?x.folderOrder:[]).filter(v=>typeof v==='string'&&folderSet.has(v)),...folders])];
+    const notes=x.notes.filter(n=>n&&typeof n.id==='string').slice(0,15000).map(n=>({
+      id:n.id,title:String(n.title||'Untitled').slice(0,400),
+      folder:String(n.folder||'Inbox').slice(0,100),
+      html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
+      updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
+      starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
+    }));
+    const noteIds=new Set(notes.map(n=>n.id)),noteOrder={};
+    if(x.noteOrder&&typeof x.noteOrder==='object'&&!Array.isArray(x.noteOrder)){
+      for(const [folder,values] of Object.entries(x.noteOrder)){
+        if((folder==='Inbox'||folderSet.has(folder))&&Array.isArray(values))
+          noteOrder[folder]=[...new Set(values.filter(id=>typeof id==='string'&&noteIds.has(id)))];
+      }
+    }
+    return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),
+      foldersUpdatedAt:typeof x.foldersUpdatedAt==='string'?x.foldersUpdatedAt:(x.updatedAt||stamp()),
+      organizationUpdatedAt:typeof x.organizationUpdatedAt==='string'?x.organizationUpdatedAt:(x.foldersUpdatedAt||x.updatedAt||stamp()),
+      folders,folderParents:parents,folderOrder:order,noteOrder,notes
     };
   }
   let state;
@@ -122,7 +146,7 @@
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
   let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
-  let draggingFolder=null;
+  let draggingFolder=null,draggedItem=null,dragTarget=null,dragHoverTimer=null;
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
   const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
@@ -135,6 +159,34 @@
   const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived&&!n.purged);
   const findNote=id=>state.notes.find(n=>n.id===id);
   const folderLabel=name=>name==='Inbox'?'Notes':name;
+  const folderParent=name=>state.folderParents?.[name]||null;
+  const folderChildren=parent=>(state.folderOrder||state.folders).filter(f=>state.folders.includes(f)&&folderParent(f)===parent);
+  const folderDescends=(name,ancestor)=>{
+    for(let p=folderParent(name),seen=new Set();p&&!seen.has(p);p=folderParent(p)){
+      if(p===ancestor)return true;
+      seen.add(p);
+    }
+    return false;
+  };
+  function folderLabelPath(folder){
+    let output=[folderLabel(folder)],seen=new Set([folder]);
+    for(let p=folderParent(folder);p&&!seen.has(p);p=folderParent(p)){output.unshift(p);seen.add(p);}
+    return output.join(' / ');
+  }
+  function sortFolderNotes(notes,folder){
+    const custom=state.noteOrder?.[folder]||[];
+    const lookup=new Map(custom.map((id,i)=>[id,i]));
+    return [...notes].sort((a,b)=>{
+      const ai=lookup.get(a.id),bi=lookup.get(b.id);
+      if(ai!==undefined&&bi!==undefined)return ai-bi;
+      if(ai!==undefined)return -1;if(bi!==undefined)return 1;
+      return Date.parse(b.updatedAt)-Date.parse(a.updatedAt);
+    });
+  }
+  function markOrganizationChanged(){
+    state.organizationUpdatedAt=stamp();state.foldersUpdatedAt=state.organizationUpdatedAt;persist();
+  }
+
   const timeAgo=date=>{
     const seconds=Math.max(0,Math.floor((Date.now()-Date.parse(date||stamp()))/1000));
     if(seconds<45)return 'just now';if(seconds<3600)return Math.floor(seconds/60)+'m ago';
