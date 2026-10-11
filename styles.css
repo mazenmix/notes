@@ -831,3 +831,16 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .note-row{min-height:39px}
 }
 @media(prefers-reduced-motion:reduce){.folder-tree-children{animation:none!important}}
+
+/* Drop lines are shared by pinned folders and folder headers in Notes. */
+.note-group-toggle[data-drag-folder]{cursor:grab;user-select:none}
+.note-group-toggle[data-drag-folder]:active{cursor:grabbing}
+.note-group-toggle.dragging{opacity:.44}
+.note-group-toggle.drop-before::before,.note-group-toggle.drop-after::after{
+  content:"";position:absolute;z-index:4;left:9px;right:9px;height:3px;
+  background:#83bee7;box-shadow:0 0 8px #4aa5e277;border-radius:8px;pointer-events:none
+}
+.note-group-toggle.drop-before::before{top:-3px}
+.note-group-toggle.drop-after::after{bottom:-3px}
+[data-theme="light"] .note-group-toggle.drop-before::before,
+[data-theme="light"] .note-group-toggle.drop-after::after{background:#468fbf}
