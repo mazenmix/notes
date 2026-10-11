@@ -316,7 +316,7 @@
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
     // Keep the Notes tree complete while navigating folder tabs or All Notes.
-    let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):live;
+    let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='star'?live.filter(n=>n.starred):live;
     if(search.trim()){
       const q=search.toLocaleLowerCase();
       notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
