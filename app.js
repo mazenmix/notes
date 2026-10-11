@@ -877,7 +877,8 @@
     for(const code of editor.querySelectorAll('pre[data-code-block]>code')){
       code.spellcheck=false;code.contentEditable='true';
       const pre=code.closest('pre[data-code-block]');
-      if(pre&&!pre.querySelector('[data-code-controls]')){
+      if(pre&&!pre.querySelector('[data-code-action="copy"]')){
+        pre.querySelector('[data-code-controls]')?.remove();
         const tools=document.createElement('div');tools.dataset.codeControls='true';
         tools.contentEditable='false';
         tools.innerHTML='<button type="button" data-code-action="copy" aria-label="Copy code" title="Copy code"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M16 18v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="copy-feedback">Copy</span></button>'+
@@ -1050,6 +1051,44 @@
     }
     out+=esc(source.slice(at));
     if(code.innerHTML!==out)code.innerHTML=out;
+  }
+  // Recolor *during* input, preserving both selection endpoints and direction.
+  // No delayed refresh, no focus loss and no caret jump inside nested token spans.
+  function highlightCodeLive(code){
+    if(!code?.isConnected)return;
+    const sel=window.getSelection();
+    if(!sel?.rangeCount||!code.contains(sel.anchorNode)||!code.contains(sel.focusNode)){
+      colorizeCode(code);return;
+    }
+    const offsetOf=(node,offset)=>{
+      const r=document.createRange();r.selectNodeContents(code);
+      try{r.setEnd(node,offset);return r.toString().length;}catch(e){return null;}
+    };
+    const a=offsetOf(sel.anchorNode,sel.anchorOffset),f=offsetOf(sel.focusNode,sel.focusOffset);
+    if(a===null||f===null){colorizeCode(code);return;}
+    colorizeCode(code);
+    const pointAt=pos=>{
+      const walker=document.createTreeWalker(code,NodeFilter.SHOW_TEXT);
+      let node,last=null,left=Math.max(0,pos);
+      while((node=walker.nextNode())){
+        last=node;
+        if(left<=node.textContent.length)return [node,left];
+        left-=node.textContent.length;
+      }
+      if(!last){last=document.createTextNode('');code.append(last);}
+      return [last,last.textContent.length];
+    };
+    const [an,ao]=pointAt(a),[fn,fo]=pointAt(f);
+    try{
+      if(sel.setBaseAndExtent)sel.setBaseAndExtent(an,ao,fn,fo);
+      else{
+        const r=document.createRange();
+        if(a<=f){r.setStart(an,ao);r.setEnd(fn,fo);}
+        else{r.setStart(fn,fo);r.setEnd(an,ao);}
+        sel.removeAllRanges();sel.addRange(r);
+      }
+      saveSelection();
+    }catch(e){console.warn('Code caret restore skipped',e);}
   }
   function highlightBlocks(){
     $('rich-editor').querySelectorAll('pre[data-code-block]>code').forEach(code=>{
@@ -2144,7 +2183,18 @@
   function bindRichText(){
     const editor=$('rich-editor');
     editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
-    editor.addEventListener('input',onEditorInput);
+    editor.addEventListener('input',e=>{
+      const anchor=window.getSelection()?.anchorNode;
+      const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code')||
+        e.target.closest?.('pre[data-code-block]>code');
+      if(code&&!e.isComposing)highlightCodeLive(code);
+      onEditorInput();
+    });
+    editor.addEventListener('compositionend',()=>{
+      const anchor=window.getSelection()?.anchorNode;
+      const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code');
+      if(code){highlightCodeLive(code);onEditorInput();}
+    });
     editor.addEventListener('focusout',e=>{
       const code=e.target.closest('pre[data-code-block]>code');
       if(code)setTimeout(()=>{if(code.isConnected&&!code.contains(document.activeElement)){colorizeCode(code);onEditorInput();}},40);
@@ -2173,7 +2223,22 @@
       if(codeAction){
         event.preventDefault();event.stopPropagation();
         const block=codeAction.closest('pre[data-code-block]');
-        if(block&&codeAction.dataset.codeAction==='remove'){block.remove();onEditorInput();}
+        if(!block)return;
+        if(codeAction.dataset.codeAction==='remove'){block.remove();onEditorInput();}
+        else if(codeAction.dataset.codeAction==='copy'){
+          try{
+            await navigator.clipboard.writeText(block.querySelector('code')?.textContent||'');
+            const label=codeAction.querySelector('.copy-feedback');
+            if(label)label.textContent='Copied';
+            codeAction.classList.add('is-copied');
+            showToast('Copied');
+            setTimeout(()=>{
+              if(!codeAction.isConnected)return;
+              codeAction.classList.remove('is-copied');
+              if(label)label.textContent='Copy';
+            },1400);
+          }catch(e){showToast('Copy unavailable');}
+        }
         return;
       }
       const action=event.target.closest('[data-asset-action]'),figure=action?.closest('figure[data-asset-id]');
