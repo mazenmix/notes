@@ -10,7 +10,7 @@
   const SWAP_DELAY=1450;
   const seeded=()=>({
     version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
-    folders:['Personal','Work','Ideas','Writing','Design','Reading','Life'],
+    folders:[],
     notes:[
       {id:'welcome',title:'A calmer mind',folder:'Life',html:'<h2>Thoughts on a simpler life</h2><p>Lately I’ve been thinking a lot about how much calmer life feels when things are simple. Not easier, but simpler. Fewer tabs, fewer commitments, fewer things fighting for my attention.</p><p>It’s not about doing less, but about making space for what actually matters.</p><ul><li>More time for deep work</li><li>A cleaner headspace</li><li>People who feel like home</li><li>A life that feels intentional</li></ul><blockquote>Simplicity is not the absence of things, but the presence of what matters.</blockquote><h2>Related</h2><p>Keep the ideas connected: <a data-note-id="habits">Habits</a> · <a data-note-id="focus">Focus</a> · <a data-note-id="morning">A better morning</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
       {id:'habits',title:'Habits',folder:'Life',html:'<h2>Small things, often</h2><p>Good habits create space for a calmer mind.</p><ul><li>Read every day</li><li>Move my body</li><li>Protect the morning</li></ul><p><a data-note-id="welcome">A calmer mind</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
@@ -119,6 +119,9 @@
   let collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]);
   let expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
+  // Pinned navigation is separate from the persisted notes and folder catalog.
+  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
+  let draggingFolder=null;
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
   const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
@@ -139,7 +142,7 @@
   const plain=html=>{const d=document.createElement('div');d.innerHTML=safeHtml(html);return d.innerText||d.textContent||'';};
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
-  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],lastClosedTab}));}
+  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,lastClosedTab}));}
   function persist(remote=true){
     pristine=false;
     state.updatedAt=stamp();
@@ -222,7 +225,8 @@
     if(searchFocus)setTimeout(()=>$('search').focus(),60);
   }
   function renderSidebar(){
-    const folders=state.folders,live=visible();
+    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
+    const folders=pinnedFolders,live=visible();
     const quick=[['inbox','Notes','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
@@ -230,7 +234,7 @@
       ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'"><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
+    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'" data-drag-folder="'+esc(f)+'" draggable="true" title="Drag to reorder"><span class="folder-drag-handle" aria-hidden="true">⠿</span><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
@@ -250,7 +254,7 @@
     const groupMap=new Map();
     for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
     const ordered=[...groupMap.entries()].sort((a,b)=>{
-      const ai=['Inbox',...folders].indexOf(a[0]),bi=['Inbox',...folders].indexOf(b[0]);
+      const ai=['Inbox',...pinnedFolders,...state.folders].indexOf(a[0]),bi=['Inbox',...pinnedFolders,...state.folders].indexOf(b[0]);
       return (ai<0?999:ai)-(bi<0?999:bi);
     });
     $('note-list').innerHTML=ordered.length?ordered.map(([folder,items])=>{
@@ -266,7 +270,6 @@
     const text=plain(n.html).trim(),words=text?text.split(/\s+/u).length:0;
     $('word-count').textContent=words.toLocaleString()+' words';
     $('character-count').textContent=text.length.toLocaleString()+' characters';
-    $('note-updated').textContent='Edited '+timeAgo(n.updatedAt);
   }
   function renderFolderView(folder){
     const all=visible().filter(n=>n.folder===folder).sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
@@ -294,7 +297,6 @@
     $('rich-editor').innerHTML=n?.html||'';
     $('mobile-title').innerHTML=esc(n?.title||'All notes')+' '+icon('chevron');
     $('breadcrumb').innerHTML=n?esc(folderLabel(n.folder))+' <span> / </span> '+esc(n.title):'Your notes';
-    $('editor-eyebrow').textContent=n?('YOUR NOTES  —  '+folderLabel(n.folder).toUpperCase()):'YOUR WORKSPACE';
     updateSummary();
     $('editor-scroll').scrollTop=0;
   }
@@ -779,7 +781,7 @@
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||['inbox','notes'].includes(newName.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===newName.toLocaleLowerCase())){showToast('Choose a unique folder name');return;}
-    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();
+    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
     tabs=tabs.map(id=>id===folderKey(old)?folderKey(newName):id);
@@ -790,7 +792,7 @@
     persist();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
-    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();
+    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.filter(f=>f!==folder);
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
     if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Notes');
   }
@@ -1266,7 +1268,7 @@
       if(!name?.trim())return;
       const f=name.trim().slice(0,90);
       if(['notes','inbox'].includes(f.toLocaleLowerCase())||state.folders.some(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase())){showToast('That folder already exists');return;}
-      state.folders.push(f);state.foldersUpdatedAt=stamp();persist();selectFolder(f);
+      state.folders.push(f);state.foldersUpdatedAt=stamp();pinnedFolders.push(f);persist();saveUi();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
     $('note-title').addEventListener('input',onTitleInput);
@@ -1278,8 +1280,6 @@
       const r=$('more-button').getBoundingClientRect();
       showMenu(r.right-240,r.bottom+7,appOptions(),{id:selected});
     });
-    $('rail-notes').addEventListener('click',()=>{setFilter('all');openSidebar();});
-    $('rail-star').addEventListener('click',()=>{setFilter('star');openSidebar();});
     document.querySelectorAll('[data-mobile]').forEach(b=>b.addEventListener('click',()=>{
       const action=b.dataset.mobile;
       if(action==='notes')openSidebar();
