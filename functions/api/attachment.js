@@ -46,3 +46,16 @@ export async function onRequestPost({request,env}){
     return json({id,name:originalName,mime,size:bytes.byteLength},201);
   }catch(e){console.error('R2 upload failed',e);return json({error:'Attachment upload failed'},503);}
 }
+
+export async function onRequestDelete({request,env}){
+  const error=await authorize(request,env,true);if(error)return error;
+  const id=new URL(request.url).searchParams.get('id');
+  if(!validId(id))return json({error:'Invalid attachment ID'},400);
+  try{
+    // Do not delete objects still referenced by any surviving note in D1.
+    const row=await env.DB.prepare('SELECT body FROM vault WHERE id=1').first();
+    if(row?.body?.includes(id))return json({error:'Attachment still in use'},409);
+    await env.ATTACHMENTS.delete(keyOf(id));
+    return json({deleted:true});
+  }catch(e){console.error('R2 attachment cleanup failed',e);return json({error:'Cleanup unavailable'},503);}
+}
