@@ -90,7 +90,7 @@
   if(selected&&!tabs.includes(selected))tabs.push(selected);
   let filter='all',search='',theme=localStorage.getItem(THEME)==='light'?'light':'dark';
   let panelHidden=!!ui.panelHidden,focusMode=false,insightTab='graph',isEditing=false,cloudReady=false,ownerActive=false;
-  let cloudStatus='Saved on this device',syncTimer=null,syncing=false,requestedSync=false,dirty=false,revision=0,lastConfirmed=null;
+  let cloudStatus='Saved on this device',syncTimer=null,maxSyncTimer=null,syncing=false,requestedSync=false,dirty=false,revision=0,lastConfirmed=null;
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,skipClickUntil=0;
   const current=()=>state.notes.find(n=>n.id===selected)||null;
@@ -510,7 +510,7 @@
     finally{$('sign-in').disabled=false;updateCloudUI();}
   }
   async function signOut(){
-    clearTimeout(syncTimer);
+    clearTimeout(syncTimer);clearTimeout(maxSyncTimer);maxSyncTimer=null;
     try{await api('/api/session',{method:'DELETE'});}catch(e){}
     ownerActive=false;revision=0;lastConfirmed=null;localStorage.removeItem(VERIFIED);
     makeSavedStatus('Saved locally · Signed out');showToast('Cloud locked');
@@ -530,12 +530,16 @@
   function scheduleSync(){
     if(!ownerActive){makeSavedStatus('Saved locally · Unlock cloud');return;}
     makeSavedStatus('Saving…');clearTimeout(syncTimer);
+    // Debounce ordinary keystrokes; bound delay also saves during uninterrupted typing.
     syncTimer=setTimeout(()=>pushCloud(),SWAP_DELAY);
+    if(!maxSyncTimer)maxSyncTimer=setTimeout(()=>{
+      maxSyncTimer=null;clearTimeout(syncTimer);pushCloud();
+    },6500);
   }
   async function pushCloud(){
     if(!ownerActive)return false;
     if(syncing){requestedSync=true;return false;}
-    syncing=true;makeSavedStatus('Syncing…');let ok=false;
+    syncing=true;clearTimeout(syncTimer);clearTimeout(maxSyncTimer);maxSyncTimer=null;makeSavedStatus('Syncing…');let ok=false;
     try{
       for(let attempt=0;attempt<3;attempt++){
         const remote=await api('/api/vault');
