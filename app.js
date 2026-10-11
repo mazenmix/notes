@@ -478,7 +478,7 @@
     } catch(e){setCloudStatus('Offline · saved locally');console.warn('Cloud save/verify failed:',e);}
     finally{
       syncBusy=false;
-      if(dirty||syncPending){syncPending=false;queueSync();}
+      if(syncPending||(success&&dirty)){syncPending=false;queueSync();}
       updateStatus();
     }
     return success;
@@ -515,7 +515,7 @@
       if(first)toast('Cloud verification failed: '+e.message);
     } finally{
       syncBusy=false;
-      if(dirty||syncPending){syncPending=false;queueSync();}
+      if(syncPending||(success&&dirty)){syncPending=false;queueSync();}
       updateStatus();
     }
     return success;
