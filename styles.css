@@ -625,3 +625,58 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   body.folder-tab-active .mobile-nav{display:flex}
   body.folder-tab-active .editor-pane{padding-bottom:calc(60px + env(safe-area-inset-bottom,0px))}
 }
+
+/* MX Note color tools — no external assets, mobile-friendly custom palette */
+.paint-button{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;width:38px;min-width:38px;height:36px;border-radius:9px;
+}
+.paint-letter{font:700 17px/17px var(--sans);color:var(--ink)}
+.marker-letter{font-size:19px;line-height:15px;color:#d4dce7;transform:rotate(-17deg)}
+.paint-underline{height:3px;width:23px;border-radius:9px;background:linear-gradient(90deg,#ec6775,#e1b34d,#5cc58a,#5caaf0,#b57adf)}
+.marker-underline{height:5px;width:23px;border-radius:3px;background:#e6c752}
+.paint-popover{
+  position:fixed;z-index:66;width:244px;max-width:calc(100vw - 16px);
+  background:color-mix(in srgb,var(--layer) 95%,#263b50 5%);
+  border:1px solid #3c4b5b;box-shadow:0 20px 70px #000a;
+  border-radius:14px;padding:12px;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  animation:mx-paint-in .13s ease-out;
+}
+.paint-popover[hidden]{display:none!important}
+.paint-title{
+  color:#e6edf5;font-size:12px;font-weight:650;padding:0 2px 11px;
+  display:flex;align-items:center;justify-content:space-between
+}
+.paint-title span{color:#8797aa;font-size:10px;font-weight:400}
+.paint-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.paint-swatch{height:34px;width:100%;display:grid;place-items:center;
+  border-radius:9px;border:1px solid transparent;background:transparent;
+  cursor:pointer;transition:background-color .12s,transform .12s,border-color .12s
+}
+.paint-swatch span{
+  width:25px;height:25px;border-radius:8px;background:var(--swatch);
+  border:1px solid #ffffff30;box-shadow:inset 0 1px 1px #ffffff23
+}
+.paint-swatch:hover,.paint-swatch:focus-visible{background:#ffffff13;border-color:#90aac1;transform:scale(1.05)}
+.paint-clear{margin-top:9px;padding:8px;width:100%;border:1px solid #3c4853;border-radius:8px;background:transparent;color:#bdcada;font-size:11px;text-align:center}
+.paint-clear:hover{background:#2b3540}
+.rich-editor span[style*="background-color"]{border-radius:3px;padding-inline:2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.note-row .note-item{width:100%;display:flex;align-items:center;min-height:32px;padding-inline:11px}
+.note-row .note-item .note-name{flex:1;text-align:start;min-width:0}
+.note-row:has(.note-item:hover){background:#1c232a}
+@keyframes mx-paint-in{from{opacity:0;transform:translateY(4px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+[data-theme="light"] .paint-popover{background:#fbfdff;border-color:#c8d5e1;box-shadow:0 18px 50px #425a7544}
+[data-theme="light"] .paint-title{color:#283c50}
+[data-theme="light"] .paint-title span{color:#75899b}
+[data-theme="light"] .marker-letter{color:#587087}
+[data-theme="light"] .paint-swatch:hover{background:#e8eef5}
+[data-theme="light"] .paint-clear{color:#49657c;border-color:#c9d7e1}
+[data-theme="light"] .paint-clear:hover{background:#e5eef5}
+[data-theme="light"] .note-row:has(.note-item:hover){background:#e2ebf3}
+@media(max-width:760px){
+  .paint-popover{width:236px;padding:10px;border-radius:12px}
+  .paint-button{width:35px;min-width:35px}
+  .paint-swatch{height:33px}
+}
+@media(prefers-reduced-motion:reduce){.paint-popover{animation:none}}
