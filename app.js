@@ -773,7 +773,7 @@
   }
 
   // Real private R2 attachments. Blob URLs never persist to D1 HTML.
-  const assetUrlCache=new Map(),assetInflight=new Map();
+  const assetUrlCache=new Map(),assetInflight=new Map(),resizedFigures=new WeakSet();
   async function assetUrl(id){
     if(assetUrlCache.has(id))return assetUrlCache.get(id);
     if(assetInflight.has(id))return assetInflight.get(id);
@@ -791,6 +791,21 @@
       const id=figure.dataset.assetId,kind=figure.dataset.kind,width=Number(figure.dataset.width)||440;
       figure.style.width=Math.min(900,Math.max(160,width))+'px';
       if(kind==='image'){
+        if(!resizedFigures.has(figure)&&typeof ResizeObserver==='function'){
+          resizedFigures.add(figure);
+          let initial=true;
+          const observer=new ResizeObserver(entries=>{
+            if(!figure.isConnected){observer.disconnect();return;}
+            const width=Math.round(entries[0]?.contentRect?.width||0);
+            if(initial){initial=false;return;}
+            if(width>=160&&Math.abs((Number(figure.dataset.width)||440)-width)>4){
+              figure.dataset.width=String(Math.min(900,width));
+              clearTimeout(figure._saveWidthTimer);
+              figure._saveWidthTimer=setTimeout(()=>onEditorInput(),300);
+            }
+          });
+          observer.observe(figure);
+        }
         const img=figure.querySelector('img[data-asset-image]');
         if(img&&!img.src.startsWith('blob:'))assetUrl(id).then(url=>{
           if(img.isConnected)img.src=url;
@@ -913,6 +928,12 @@
     }else if(action==='table-delete'){table.closest('.table-scroll')?.remove();if(table.isConnected)table.remove();}
     onEditorInput();
   }
+  const codeOptions=()=>[
+    {ico:'file',label:'Copy code',action:'code-copy'},
+    {ico:'edit',label:'Change language…',action:'code-language'},
+    {ico:'check',label:'Refresh syntax colors',action:'code-colorize'},
+    {divider:true},{ico:'trash',label:'Remove code block',action:'code-delete',danger:true}
+  ];
   const tableOptions=()=>[
     {ico:'plus',label:'Insert row below',action:'table-row-add'},
     {ico:'plus',label:'Insert column right',action:'table-col-add'},
@@ -1335,6 +1356,20 @@
     hideContext();
     if(action.startsWith('spell-apply-')){applyCorrection(context,Number(action.slice(12)));return;}
     if(action.startsWith('table-')){modifyTable(action,context?.cell);return;}
+    if(action.startsWith('code-')){
+      const pre=context?.codeBlock;if(!pre?.isConnected)return;
+      const code=pre.querySelector('code');
+      if(action==='code-copy')navigator.clipboard.writeText(code?.textContent||'').then(()=>showToast('Code copied')).catch(()=>showToast('Copy not available'));
+      else if(action==='code-delete'){pre.remove();onEditorInput();}
+      else if(action==='code-colorize'){if(code){colorizeCode(code);onEditorInput();}}
+      else if(action==='code-language'){
+        const lang=await ask('Code language','javascript, python, css, sql, html, etc.',pre.dataset.language||'javascript');
+        if(lang!==null&&/^[a-z+#]{1,20}$/i.test(lang.trim())){
+          pre.dataset.language=lang.trim().toLowerCase();colorizeCode(code);onEditorInput();
+        }
+      }
+      return;
+    }
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
       case 'folder-restore':if(folder&&state.folderTrash?.[folder]?.deleted){
@@ -1871,6 +1906,8 @@
         if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
         const n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
       if(editor){
+        const codeBlock=e.target.closest('#rich-editor pre[data-code-block]');
+        if(codeBlock){showMenu(e.clientX,e.clientY,codeOptions(),{codeBlock});return;}
         const cell=e.target.closest('#rich-editor td,#rich-editor th');
         if(cell){showMenu(e.clientX,e.clientY,tableOptions(),{cell});return;}
         const figure=e.target.closest('figure[data-asset-id]');
