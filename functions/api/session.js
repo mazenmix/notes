@@ -18,10 +18,10 @@ export async function onRequestPost({request,env}) {
       return json({error:'Too many attempts. Try again in 15 minutes.'},429);
     const correct=await passwordsMatch(body.password,env.NOTES_PASSWORD);
     if(!correct){
-      await env.DB.prepare(\`INSERT INTO login_attempts (fingerprint,attempts,window_start) VALUES (?,1,?)
+      await env.DB.prepare(`INSERT INTO login_attempts (fingerprint,attempts,window_start) VALUES (?,1,?)
       ON CONFLICT(fingerprint) DO UPDATE SET
       attempts=CASE WHEN excluded.window_start-login_attempts.window_start>=900 THEN 1 ELSE login_attempts.attempts+1 END,
-      window_start=CASE WHEN excluded.window_start-login_attempts.window_start>=900 THEN excluded.window_start ELSE login_attempts.window_start END\`)
+      window_start=CASE WHEN excluded.window_start-login_attempts.window_start>=900 THEN excluded.window_start ELSE login_attempts.window_start END`)
       .bind(key,now).run();
       return json({error:'Incorrect owner password'},401);
     }
