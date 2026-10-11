@@ -152,7 +152,7 @@
   if(!localStorage.getItem(EXPLICIT_PINS_KEY)){pinnedFolders=[];localStorage.setItem(EXPLICIT_PINS_KEY,'1');}
   let collapsedPinnedFolders=new Set(Array.isArray(ui.collapsedPinnedFolders)?ui.collapsedPinnedFolders:[]);
   let draggingFolder=null,draggedItem=null,dragTarget=null,dragHoverTimer=null;
-  const isIosLayout=()=>window.matchMedia('(max-width:1100px)').matches;
+  const isIosLayout=()=>window.matchMedia('(max-width:1100px), (any-pointer:coarse) and (max-width:1500px)').matches;
   let iosScreen='folders',iosFolder='Inbox',iosEditMode=false,iosSearchTerm='';
   let iosExpanded=new Set(Array.isArray(ui.iosExpanded)?ui.iosExpanded:[]);
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
