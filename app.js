@@ -18,7 +18,17 @@
       {id:'morning',title:'A better morning',folder:'Personal',html:'<h2>Start with intention</h2><p>Water, a walk, one written page.</p><p><a data-note-id="welcome">A calmer mind</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'}
     ]
   });
-  const allowed=new Set(['DIV','P','BR','B','STRONG','I','EM','U','S','H1','H2','H3','UL','OL','LI','BLOCKQUOTE','A','SPAN','CODE','HR']);
+  const textColors=['#eb6577','#ed9555','#e7b852','#e2d767','#66c88d','#4bc7ba','#64b5f2','#9b8cf2','#e684bd','#a9b8c7'];
+  const markerColors=['#653440','#624027','#615622','#505d32','#285944','#235b57','#294f6e','#453e77','#64385b','#50555e'];
+  const inkLabels=['Red','Orange','Gold','Yellow','Green','Teal','Blue','Violet','Pink','Silver'];
+  const allowed=new Set(['DIV','P','BR','B','STRONG','I','EM','U','S','H1','H2','H3','UL','OL','LI','BLOCKQUOTE','A','SPAN','FONT','CODE','HR']);
+  const safePaint=(value,palette)=>{
+    const v=String(value||'').trim().toLowerCase();
+    let hex=v;
+    const rgb=/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(?:1|1\.0))?\s*\)$/.exec(v);
+    if(rgb){const x=rgb.slice(1,4).map(Number);if(x.some(n=>n>255))return null;hex='#'+x.map(n=>n.toString(16).padStart(2,'0')).join('');}
+    return palette.includes(hex)?hex:null;
+  };
   function safeHtml(raw) {
     const doc=new DOMParser().parseFromString('<div>'+String(raw||'')+'</div>','text/html');
     function walk(node){
@@ -39,11 +49,18 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
+      if(t==='span'||t==='font'){
+        const ink=safePaint(node.style?.color||node.getAttribute('color'),textColors);
+        const mark=safePaint(node.style?.backgroundColor||node.getAttribute('bgcolor'),markerColors);
+        const style=[ink?'color:'+ink:'',mark?'background-color:'+mark:''].filter(Boolean).join(';');
+        if(style)attrs=' style="'+style+'"';
+      }
       if(t==='span'&&['0','1'].includes(node.getAttribute('data-checkbox'))){
         const checked=node.getAttribute('data-checkbox')==='1';
         attrs=' data-checkbox="'+(checked?'1':'0')+'" contenteditable="false" role="checkbox" tabindex="0" aria-label="Checklist item" aria-checked="'+checked+'"';
       }
-      return '<'+t+attrs+'>'+children+'</'+t+'>';
+      const safeTag=t==='font'?'span':t;
+      return '<'+safeTag+attrs+'>'+children+'</'+safeTag+'>';
     }
     return Array.from(doc.body.firstElementChild?.childNodes||[]).map(walk).join('');
   }
@@ -113,6 +130,7 @@
   const current=()=>state.notes.find(n=>n.id===selected)||null;
   const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived&&!n.purged);
   const findNote=id=>state.notes.find(n=>n.id===id);
+  const folderLabel=name=>name==='Inbox'?'Notes':name;
   const timeAgo=date=>{
     const seconds=Math.max(0,Math.floor((Date.now()-Date.parse(date||stamp()))/1000));
     if(seconds<45)return 'just now';if(seconds<3600)return Math.floor(seconds/60)+'m ago';
@@ -153,7 +171,7 @@
     const wrapper=$('open-tabs');
     wrapper.innerHTML=tabs.filter(tabExists).map(id=>{
       const folder=isFolderTab(id),n=folder?null:findNote(id);
-      const name=folder?id.slice(7):n?.title||'Untitled';
+      const name=folder?folderLabel(id.slice(7)):n?.title||'Untitled';
       return '<div class="note-tab '+(id===activeTab?'active':'')+'" role="tab" aria-selected="'+(id===activeTab)+'" data-tab="'+esc(id)+'">'+icon(folder?'folder':'file')+
         '<span class="note-tab-title" dir="auto">'+esc(name)+'</span><button class="tab-close" data-close-tab="'+esc(id)+'" title="Close tab" aria-label="Close '+esc(name)+'">'+icon('x')+'</button></div>';
     }).join('');
@@ -188,7 +206,7 @@
     }
     saveUi();renderAll();
   }
-  function newNote(folder=filter.startsWith('folder:')?filter.slice(7):'Personal'){
+  function newNote(folder='Inbox'){
     commitEditor();
     const n={id:uuid(),title:'Untitled',folder,html:'',updatedAt:stamp(),starred:false,archived:false,deleted:false};
     state.notes.push(n);selected=n.id;activeTab=n.id;if(!tabs.includes(n.id))tabs.push(n.id);filter='all';search='';$('search').value='';
@@ -205,7 +223,7 @@
   }
   function renderSidebar(){
     const folders=state.folders,live=visible();
-    const quick=[['inbox','Inbox','folder',live.filter(n=>n.folder==='Inbox').length],
+    const quick=[['inbox','Notes','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
       ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted&&!n.purged).length],
@@ -227,10 +245,8 @@
     $('toggle-notes-list').setAttribute('aria-expanded',String(!notesCollapsed));
     $('toggle-notes-list').classList.toggle('collapsed',notesCollapsed);
     if(notesCollapsed){$('note-list').innerHTML='';return;}
-    const renderNote=n=>'<div class="note-row"><div class="note-row-top"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · right-click for actions">'+icon('file')+
-      '<span class="note-name" dir="auto">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button>'+
-      '<button class="note-expand '+(expandedNotes.has(n.id)?'expanded':'')+'" data-expand-note="'+esc(n.id)+'" aria-label="'+(expandedNotes.has(n.id)?'Collapse':'Expand')+' preview" title="Expand / collapse preview">'+icon('chevron')+'</button></div>'+
-      (expandedNotes.has(n.id)?'<div class="note-preview" dir="auto">'+esc(plain(n.html).trim().slice(0,260)||'Empty note')+'</div>':'')+'</div>';
+    const renderNote=n=>'<div class="note-row"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · right-click for actions">'+icon('file')+
+      '<span class="note-name" dir="auto">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button></div>';
     const groupMap=new Map();
     for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
     const ordered=[...groupMap.entries()].sort((a,b)=>{
@@ -240,7 +256,7 @@
     $('note-list').innerHTML=ordered.length?ordered.map(([folder,items])=>{
       const folded=collapsedGroups.has(folder);
       return '<section class="note-group"><button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
-        '<span dir="auto">'+esc(folder)+'</span><span class="count">'+items.length+'</span></button>'+
+        '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
         (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:4).map(renderNote).join('')+
           (items.length>4?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+'</div>')+'</section>';
     }).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
@@ -257,7 +273,7 @@
     const titled=all.filter(n=>n.title.trim().toLocaleLowerCase()!=='untitled');
     const drafts=all.filter(n=>n.title.trim().toLocaleLowerCase()==='untitled');
     const card=n=>'<button class="folder-note-card" data-folder-note="'+esc(n.id)+'"><span class="folder-card-icon">'+icon('file')+'</span><span class="folder-card-detail"><strong dir="auto">'+esc(n.title)+'</strong><small dir="auto">'+esc(plain(n.html).trim().slice(0,100)||'Empty note')+'</small></span><time>'+esc(timeAgo(n.updatedAt))+'</time></button>';
-    $('folder-view').innerHTML='<div class="folder-view-head"><div class="editor-eyebrow">FOLDER · '+all.length+' NOTES</div><h1 dir="auto">'+esc(folder)+'</h1><button class="folder-create" data-new-in-folder="'+esc(folder)+'">'+icon('plus')+' New note</button></div>'+
+    $('folder-view').innerHTML='<div class="folder-view-head"><div class="editor-eyebrow">FOLDER · '+all.length+' NOTES</div><h1 dir="auto">'+esc(folderLabel(folder))+'</h1><button class="folder-create" data-new-in-folder="'+esc(folder)+'">'+icon('plus')+' New note</button></div>'+
       (titled.length?'<div class="folder-view-list">'+titled.map(card).join('')+'</div>':'')+
       (drafts.length?'<details class="folder-drafts"><summary>'+icon('chevron')+' Untitled drafts <span>'+drafts.length+'</span></summary><div class="folder-view-list">'+drafts.map(card).join('')+'</div></details>':'')+
       (!all.length?'<div class="folder-empty">This folder is empty. Create a note to get started.</div>':'');
@@ -268,8 +284,8 @@
     document.querySelector('.editor-content').hidden=isFolder;
     document.body.classList.toggle('folder-tab-active',isFolder);
     if(isFolder){const name=activeTab.slice(7);renderFolderView(name);
-      $('breadcrumb').textContent='Folders / '+name;
-      $('mobile-title').innerHTML=esc(name)+' '+icon('chevron');
+      $('breadcrumb').textContent='Folders / '+folderLabel(name);
+      $('mobile-title').innerHTML=esc(folderLabel(name))+' '+icon('chevron');
       $('editor-scroll').scrollTop=0;return;}
     const n=current();
     $('note-title').disabled=!n;
@@ -277,8 +293,8 @@
     $('note-title').value=n?.title||'';
     $('rich-editor').innerHTML=n?.html||'';
     $('mobile-title').innerHTML=esc(n?.title||'All notes')+' '+icon('chevron');
-    $('breadcrumb').innerHTML=n?esc(n.folder)+' <span> / </span> '+esc(n.title):'Your notes';
-    $('editor-eyebrow').textContent=n?('YOUR NOTES  —  '+n.folder.toUpperCase()):'YOUR WORKSPACE';
+    $('breadcrumb').innerHTML=n?esc(folderLabel(n.folder))+' <span> / </span> '+esc(n.title):'Your notes';
+    $('editor-eyebrow').textContent=n?('YOUR NOTES  —  '+folderLabel(n.folder).toUpperCase()):'YOUR WORKSPACE';
     updateSummary();
     $('editor-scroll').scrollTop=0;
   }
@@ -309,7 +325,7 @@
     const n=current();if(!n)return;
     n.title=$('note-title').value||'Untitled';touchNote(n);
     $('mobile-title').innerHTML=esc(n.title)+' '+icon('chevron');
-    $('breadcrumb').innerHTML=esc(n.folder)+' <span> / </span> '+esc(n.title);
+    $('breadcrumb').innerHTML=esc(folderLabel(n.folder))+' <span> / </span> '+esc(n.title);
   }
   function saveSelection(){
     const sel=window.getSelection();
@@ -904,10 +920,8 @@
     $('sync-text').textContent=cloudStatus;
     $('sync-time').textContent=confirmed&&cloudStatus==='Saved to cloud'?'· '+timeAgo(lastConfirmed.at):'';
     $('sidebar-status').textContent=cloudStatus;
-    $('cloud-state').textContent=ownerActive?'Private Cloudflare vault · signed in':(cloudReady?'Cloud is ready · sign in':'Local only · Cloudflare D1 setup required');
     $('sync-connection').textContent=ownerActive?(cloudStatus==='Saved to cloud'?'Connected · verified':cloudStatus):cloudReady?'Sign-in required':'Not configured';
     $('last-sync-confirmed').textContent=confirmed?new Date(lastConfirmed.at).toLocaleString():'Never verified';
-    $('unsynced-count').textContent=dirty?'Pending changes':ownerActive?(confirmed?'None':'Not verified'):'Local device only';
     $('sync-now').disabled=syncing;$('sign-in').hidden=ownerActive;$('sign-out').hidden=!ownerActive;
     $('cloud-login-fields').hidden=ownerActive;
   }
@@ -1045,7 +1059,7 @@
   }
   function bindDelegation(){
     $('quick-links').addEventListener('click',e=>{
-      const b=e.target.closest('[data-filter]');if(b)setFilter(b.dataset.filter);
+      const b=e.target.closest('[data-filter]');if(b){if(b.dataset.filter==='inbox')openFolder('Inbox');else setFilter(b.dataset.filter);}
     });
     $('folder-list').addEventListener('click',async e=>{
       if(Date.now()<skipClickUntil)return;
@@ -1073,11 +1087,6 @@
       const showAll=e.target.closest('[data-show-group]');
       if(showAll){const folder=showAll.dataset.showGroup;
         if(showAllGroups.has(folder))showAllGroups.delete(folder);else showAllGroups.add(folder);
-        saveUi();renderSidebar();return;
-      }
-      const expand=e.target.closest('[data-expand-note]');
-      if(expand){const id=expand.dataset.expandNote;
-        if(expandedNotes.has(id))expandedNotes.delete(id);else expandedNotes.add(id);
         saveUi();renderSidebar();return;
       }
       const b=e.target.closest('[data-note-id]');if(b)openNote(b.dataset.noteId);
