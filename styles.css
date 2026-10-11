@@ -1478,3 +1478,111 @@ body[data-ios-layout="true"] .desktop-notes-panel{display:none!important}
   .rich-editor .table-scroll,.rich-editor div:has(>table[data-note-table]){width:100%}
   .writing-controls .extra-tool{flex:0 0 38px}
 }
+
+/* MX Note clean inline media & instant code blocks — October 2026 */
+.rich-editor figure[data-asset-id][data-kind="image"]{
+  position:relative;display:block;box-sizing:border-box;
+  width:min(240px,100%);max-width:100%;min-height:0;
+  margin:14px 0;padding:0;border:0!important;border-radius:0!important;
+  box-shadow:none!important;background:transparent!important;
+  resize:none!important;overflow:visible!important;
+  user-select:none;-webkit-user-select:none;
+  transition:none!important;touch-action:pan-y
+}
+.rich-editor figure[data-asset-id][data-kind="image"]:hover{
+  border:0!important;box-shadow:none!important;background:transparent!important
+}
+.rich-editor figure[data-kind="image"]>img{
+  display:block;width:100%;height:auto;max-width:100%;
+  border:0;border-radius:3px;background:transparent!important;object-fit:contain;
+  box-shadow:none;pointer-events:auto;user-select:none;-webkit-user-drag:none
+}
+.rich-editor figure[data-kind="image"] figcaption{display:none!important}
+.rich-editor figure[data-kind="image"]::after{
+  content:"";position:absolute;right:0;bottom:0;z-index:1;
+  width:23px;height:23px;cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 78%,#b7c7d8b0 80%,transparent 84%);
+  opacity:0;transition:opacity .15s;pointer-events:none
+}
+.rich-editor figure[data-kind="image"]:hover::after,
+.rich-editor figure[data-kind="image"].image-resizing::after{opacity:.8}
+.rich-editor figure[data-kind="image"].image-resizing,
+.rich-editor figure[data-kind="image"].image-resizing img{cursor:nwse-resize!important}
+.rich-editor figure[data-asset-id] [data-asset-controls]{
+  position:absolute;top:4px;right:4px;z-index:5;
+  display:grid;place-items:center;margin:0;padding:0;
+  border:0!important;background:transparent!important;
+  box-shadow:none!important;border-radius:6px
+}
+.rich-editor figure[data-asset-id] [data-asset-controls] button{
+  display:grid;place-items:center;width:26px;height:26px;
+  margin:0;padding:0;border:0;border-radius:6px;cursor:pointer;
+  color:#fafafa;font:400 20px/1 var(--sans);
+  background:#18202aba;opacity:.85;
+  transition:background .15s,opacity .15s
+}
+.rich-editor figure[data-asset-id] [data-asset-controls] button:hover{
+  background:#ab404de8;opacity:1;color:white
+}
+.rich-editor figure[data-kind="file"]{
+  max-width:min(420px,100%);
+  border-radius:9px;padding:9px 12px
+}
+.rich-editor figure[data-kind="file"] [data-asset-controls]{
+  top:6px;right:6px
+}
+.rich-editor pre[data-code-block]{
+  position:relative;direction:ltr;text-align:left;box-sizing:border-box;
+  background:#161e29!important;color:#e5eef9!important;
+  border:0!important;border-radius:6px!important;
+  padding:16px 18px 18px!important;margin:16px 0!important;
+  max-width:100%;overflow:auto!important;line-height:1.65;
+  box-shadow:none!important;min-height:55px;
+  scrollbar-width:thin;tab-size:2
+}
+.rich-editor pre[data-code-block]:before{content:none!important;display:none!important}
+.rich-editor pre[data-code-block]>code{
+  display:block;padding-right:17px;min-height:1.6em;outline:0;
+  background:transparent!important;color:#dce7f5!important;
+  font:450 12.7px/1.72 "IBM Plex Mono","Cascadia Code","Courier New",monospace;
+  white-space:pre;word-break:normal;overflow-wrap:normal;tab-size:2
+}
+.rich-editor pre[data-code-block]>code:focus{background:transparent!important}
+.rich-editor pre[data-code-block] [data-code-controls]{
+  position:absolute;top:5px;right:6px;z-index:8;
+  display:grid;place-items:center;line-height:1;
+  background:transparent!important;box-shadow:none!important;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button{
+  display:grid;place-items:center;min-width:25px;min-height:25px;
+  border:0;background:transparent;border-radius:5px;
+  color:#8f9fb2;font:400 21px/1 var(--sans);
+  cursor:pointer;transition:background .15s,color .15s
+}
+.rich-editor pre[data-code-block] [data-code-controls] button:hover{
+  background:#334052;color:#ffffff
+}
+.rich-editor pre[data-code-block] [data-token="keyword"]{color:#c4a2ff!important;font-weight:600}
+.rich-editor pre[data-code-block] [data-token="string"]{color:#f5b67e!important}
+.rich-editor pre[data-code-block] [data-token="comment"]{color:#78b5a0!important;font-style:italic}
+.rich-editor pre[data-code-block] [data-token="number"]{color:#80d8c9!important}
+.rich-editor pre[data-code-block] [data-token="literal"]{color:#ff8da9!important}
+.rich-editor pre[data-code-block] [data-token="function"]{color:#e1ca87!important}
+.rich-editor pre[data-code-block] [data-token="builtin"]{color:#88bffe!important}
+.rich-editor pre[data-code-block] [data-token="type"]{color:#6ed4db!important}
+.rich-editor pre[data-code-block] [data-token="property"]{color:#acd4fa!important}
+.rich-editor pre[data-code-block] [data-token="operator"]{color:#d59fca!important}
+.rich-editor pre[data-code-block] [data-token="tag"]{color:#f18ca2!important}
+.rich-editor pre[data-code-block] [data-token="variable"]{color:#c6e38d!important}
+@media(max-width:1100px),(any-pointer:coarse) and (max-width:1500px){
+  .rich-editor figure[data-asset-id][data-kind="image"]{
+    width:min(240px,100%);max-width:100%;touch-action:pan-y
+  }
+  .rich-editor figure[data-kind="image"]::after{opacity:.22}
+  .rich-editor pre[data-code-block]{padding:13px 12px!important}
+  .rich-editor pre[data-code-block]>code{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  .rich-editor figure[data-asset-id] [data-asset-controls] button,
+  .rich-editor pre[data-code-block] [data-code-controls] button{transition:none}
+}
