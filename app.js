@@ -1370,7 +1370,13 @@
       const name=await ask('New folder','Folder name');
       if(!name?.trim())return;
       const f=name.trim().slice(0,90);
-      if(['notes','inbox'].includes(f.toLocaleLowerCase())||state.folders.some(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase())){showToast('That folder already exists');return;}
+      if(['notes','inbox'].includes(f.toLocaleLowerCase())){showToast('Notes is the default folder');return;}
+      const existing=state.folders.find(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase());
+      if(existing){
+        if(!pinnedFolders.includes(existing)){pinnedFolders.push(existing);saveUi();renderSidebar();showToast('Folder added to Pinned');}
+        else showToast('Folder already pinned');
+        openFolder(existing);return;
+      }
       state.folders.push(f);state.foldersUpdatedAt=stamp();pinnedFolders.push(f);persist();saveUi();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
