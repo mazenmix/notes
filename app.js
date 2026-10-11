@@ -6,7 +6,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const uuid=()=>crypto?.randomUUID?.()||'note-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   const stamp=()=>new Date().toISOString();
-  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',VERIFIED='mxnotes.d1.lastVerified';
+  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
     version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
@@ -39,8 +39,10 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
-      if(t==='span'&&['0','1'].includes(node.getAttribute('data-checkbox')))
-        attrs=' data-checkbox="'+node.getAttribute('data-checkbox')+'" contenteditable="false"';
+      if(t==='span'&&['0','1'].includes(node.getAttribute('data-checkbox'))){
+        const checked=node.getAttribute('data-checkbox')==='1';
+        attrs=' data-checkbox="'+(checked?'1':'0')+'" contenteditable="false" role="checkbox" tabindex="0" aria-label="Checklist item" aria-checked="'+checked+'"';
+      }
       return '<'+t+attrs+'>'+children+'</'+t+'>';
     }
     return Array.from(doc.body.firstElementChild?.childNodes||[]).map(walk).join('');
@@ -92,7 +94,9 @@
   let focusMode=false,isEditing=false,cloudReady=false,ownerActive=false;
   let notesCollapsed=!!ui.notesCollapsed,collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]),expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
-  let writingFont=['system','obsidian','reading'].includes(localStorage.getItem(FONT))?localStorage.getItem(FONT):'system';
+  const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
+  let writingFont=fontChoices.includes(localStorage.getItem(FONT))?localStorage.getItem(FONT):'system';
+  let writingSize=Math.max(12,Math.min(28,Number(localStorage.getItem(FONT_SIZE))||16));
   let cloudStatus='Saved on this device',syncTimer=null,maxSyncTimer=null,syncing=false,requestedSync=false,dirty=false,revision=0,lastConfirmed=null;
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
@@ -127,10 +131,13 @@
     $('theme-mode').textContent=theme==='light'?'Light mode':'Dark mode';
     document.documentElement.dataset.writingFont=writingFont;
     $('writing-font').value=writingFont;
+    document.documentElement.style.setProperty('--editor-font-size',writingSize+'px');
+    $('font-size-label').textContent=writingSize;
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=theme==='light'?'#f8fafb':'#101214';
   }
   function toggleTheme(){theme=theme==='dark'?'light':'dark';localStorage.setItem(THEME,theme);applyTheme();showToast(theme==='dark'?'Dark mode':'Light mode');}
+  function changeFontSize(delta){writingSize=Math.max(12,Math.min(28,writingSize+delta));localStorage.setItem(FONT_SIZE,String(writingSize));applyTheme();}
   function noteTabs(){
     const wrapper=$('open-tabs');
     wrapper.innerHTML=tabs.map(id=>{
@@ -256,11 +263,65 @@
     if(!savedSelection)return;
     try{const sel=window.getSelection();sel.removeAllRanges();sel.addRange(savedSelection);}catch(e){}
   }
+  function moveCaretAfterCheckbox(block){
+    if(!block)return;
+    const checkbox=block.querySelector('[data-checkbox]');
+    let tail=checkbox?.nextSibling;
+    if(!tail||tail.nodeType!==3){tail=document.createTextNode('\u00a0');checkbox?.after(tail);}
+    const range=document.createRange();
+    range.setStart(tail,Math.min(tail.textContent.length,1));
+    range.collapse(true);
+    const selection=window.getSelection();
+    selection.removeAllRanges();selection.addRange(range);
+    $('rich-editor').focus({preventScroll:true});
+    savedSelection=range.cloneRange();
+  }
+  function toggleCheckbox(checkbox){
+    if(!checkbox)return;
+    const next=checkbox.dataset.checkbox==='1'?'0':'1';
+    checkbox.dataset.checkbox=next;
+    checkbox.setAttribute('aria-checked',String(next==='1'));
+    checkbox.textContent=next==='1'?'☑':'☐';
+    onEditorInput();
+  }
+  function checklistEnter(event){
+    if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.metaKey)return;
+    const selection=window.getSelection();
+    const anchor=selection?.anchorNode;
+    const root=anchor?.nodeType===1?anchor:anchor?.parentElement;
+    const block=root?.closest('p[data-checklist="1"]');
+    if(!block||!selection?.rangeCount)return;
+    event.preventDefault();
+    const range=selection.getRangeAt(0).cloneRange();
+    if(!range.collapsed)range.deleteContents();
+    const filled=block.textContent.replace(/[☐☑\u00a0\u200b]/gu,'').trim();
+    if(!filled){
+      const paragraph=document.createElement('p');
+      paragraph.appendChild(document.createElement('br'));
+      block.replaceWith(paragraph);
+      const caret=document.createRange();caret.setStart(paragraph,0);caret.collapse(true);
+      selection.removeAllRanges();selection.addRange(caret);savedSelection=caret.cloneRange();
+    }else{
+      const remaining=range.cloneRange();
+      remaining.setEnd(block,block.childNodes.length);
+      const suffix=remaining.extractContents();
+      const next=document.createElement('p');next.dataset.checklist='1';
+      next.innerHTML='<span data-checkbox="0" contenteditable="false" role="checkbox" aria-label="Checklist item" aria-checked="false" tabindex="0">☐</span>&nbsp;';
+      next.appendChild(suffix);
+      block.after(next);
+      moveCaretAfterCheckbox(next);
+    }
+    onEditorInput();
+  }
   function format(cmd,val=null){
     const editor=$('rich-editor');
     editor.focus({preventScroll:true});restoreSelection();
     if(cmd==='checklist'){
-      document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false">☐</span>&nbsp;</p>');
+      const before=new Set(editor.querySelectorAll('p[data-checklist="1"]'));
+      document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false" role="checkbox" aria-label="Checklist item" aria-checked="false" tabindex="0">☐</span>&nbsp;</p>');
+      const newBlock=[...editor.querySelectorAll('p[data-checklist="1"]')].find(p=>!before.has(p));
+      if(newBlock)moveCaretAfterCheckbox(newBlock);
+      else editor.focus({preventScroll:true});
     }else if(cmd==='createLink'){
       ask('Insert a link','Existing note title or https:// URL','').then(target=>{
         if(!target?.trim())return;
@@ -359,7 +420,146 @@
     {ico:'folder',label:'New folder',action:'new-folder'},
     {ico:'palette',label:'Appearance & settings',action:'settings'}
   ];
-  const editorOptions=hasText=>[
+
+  // Fast, private offline spelling hints. Built-in browser spellcheck remains
+  // available with Shift + right-click for its full installed dictionaries.
+  const correctionPairs={
+    teh:'the',adn:'and',thier:'their',recieve:'receive',recieved:'received',
+    acheive:'achieve',beleive:'believe',becuase:'because',becouse:'because',
+    definetly:'definitely',definately:'definitely',seperate:'separate',
+    adress:'address',addres:'address',enviroment:'environment',
+    goverment:'government',occurence:'occurrence',occured:'occurred',
+    succesful:'successful',sucess:'success',freind:'friend',
+    freinds:'friends',wierd:'weird',untill:'until',wich:'which',
+    langauge:'language',mesage:'message',messege:'message',
+    tommorow:'tomorrow',tommorrow:'tomorrow',tommorow:'tomorrow',
+    accross:'across',alot:'a lot',immediatly:'immediately',
+    begining:'beginning',writting:'writing',comming:'coming',
+    beleif:'belief',seperately:'separately',grammer:'grammar',
+    neccessary:'necessary',necesary:'necessary',expierence:'experience',
+    calender:'calendar',resturant:'restaurant',privat:'private',
+    notees:'notes',sycn:'sync',cluod:'cloud',becasue:'because',
+    woud:'would',shoud:'should',coud:'could',qick:'quick',
+    هاذا:'هذا',هاذه:'هذه',هاذي:'هذه',هاذين:'هذين',
+    هية:'هي',لاكن:'لكن',الكن:'لكن',الان:'الآن',
+    اللغه:'اللغة',مدرسه:'مدرسة',تجربه:'تجربة',
+    كتابه:'كتابة',ملاحظه:'ملاحظة',ملاخظة:'ملاحظة',
+    الملاحضات:'الملاحظات',الملاحضه:'الملاحظة',
+    حتي:'حتى',اليومم:'اليوم',سوال:'سؤال',
+    اساله:'أسئلة',شيئ:'شيء',مشاءالله:'ما شاء الله',
+    انشاءالله:'إن شاء الله',بالتاكيد:'بالتأكيد',
+    الضاهر:'الظاهر',الظابط:'الضابط',خطا:'خطأ',
+    مساله:'مسألة',الغه:'اللغة',الاخطاء:'الأخطاء',
+    لوحه:'لوحة',الكلمه:'الكلمة',الكلماات:'الكلمات',
+    ايميل:'إيميل',الانكليزيه:'الإنكليزية'
+  };
+  const commonWords=new Set((
+    'the and that this these those what when where which while whether with within without '+
+    'note notes writing written writer word words writing correction spell spelling suggestions '+
+    'english arabic language languages character characters letter letters title text typed type '+
+    'editing editor edit delete enter keyboard number numbers copy paste save saved '+
+    'hello world friend friends again because tomorrow today evening morning night '+
+    'work house family from your you are were was been have has had their there they '+
+    'some something anything available beautiful different important interesting '+
+    'please thank thanks welcome good great very better best well now then before after '+
+    'right left click button buttons font fonts zoom size small large change changes '+
+    'check checklist cloud secure private session synced sync settings clean smooth '+
+    'computer mobile phone screen screen keyboard software application application '+
+    'في من على الى إلى عن هذا هذه هذين هكذا هو هي نحن أن أنا أنت نعم لا لو لكن '+
+    'العربية العربي الانكليزية الإنجليزية اللغة لغات كلمة الكلمات كتابة كتابات '+
+    'الكتابة ملاحظة الملاحظة الملاحظات الصحيح تصحيح صحيحة صحيح خطأ أخطاء عند '+
+    'هنا هناك هناك الآن اليوم غدا غداً أمس ماذا لماذا كيف وين شنو شلون شكد '+
+    'الموقع التطبيق الإعدادات الإختيار الاختيار الحروف الخطوط الخط حجم الشاشة '+
+    'مربع مربعات علامة علامات الصح الاختيار خيار الخيارات تلفون تليفون جوال '+
+    'الكمبيوتر الحاسوب العربية العراق بغداد الحياة العمل البيت الصديق الوقت '+
+    'رسالة الرسالة النص الكلمات كتاب العربية هاي هسه بعد ويا عليها عليها تمام'
+  ).split(/\s+/u).filter(Boolean).map(w=>w.toLocaleLowerCase()));
+  function wordDistance(a,b){
+    const row=Array.from({length:b.length+1},(_,i)=>i);
+    for(let i=1;i<=a.length;i++){
+      let prev=row[0];row[0]=i;
+      for(let j=1;j<=b.length;j++){
+        const old=row[j];
+        row[j]=Math.min(row[j]+1,row[j-1]+1,prev+(a[i-1]===b[j-1]?0:1));
+        prev=old;
+      }
+    }
+    return row[b.length];
+  }
+  function spellingSuggestions(word){
+    if(!word||word.length<3||word.length>30)return [];
+    const lower=word.toLocaleLowerCase(),direct=correctionPairs[lower];
+    const upperFirst=w=>word[0]===word[0].toUpperCase()&&word[0]!==word[0].toLowerCase()?w[0].toUpperCase()+w.slice(1):w;
+    if(direct)return [upperFirst(direct)];
+    if(commonWords.has(lower))return [];
+    const max=lower.length>8?2:1;
+    const scored=[];
+    for(const candidate of commonWords){
+      if(Math.abs(candidate.length-lower.length)>max||candidate[0]!==lower[0])continue;
+      const distance=wordDistance(lower,candidate);
+      if(distance>0&&distance<=max)scored.push({candidate,distance});
+    }
+    return scored.sort((a,b)=>a.distance-b.distance||a.candidate.length-b.candidate.length).slice(0,3).map(x=>upperFirst(x.candidate));
+  }
+  function findPointWord(event,editor){
+    const selected=window.getSelection();
+    let textNode=null,offset=0,range=null,title=editor.id==='note-title';
+    if(title){
+      const pos=editor.selectionStart??0;
+      const text=editor.value;
+      const re=/[\p{L}\p{M}][\p{L}\p{M}\p{N}'’-]*/gu;
+      for(const match of text.matchAll(re)){
+        if(match.index<=pos&&pos<=match.index+match[0].length)
+          return {spellWord:match[0],spellStart:match.index,spellEnd:match.index+match[0].length,spellInput:true};
+      }
+      return {};
+    }
+    if(selected?.rangeCount&&!selected.isCollapsed&&editor.contains(selected.anchorNode)){
+      const rangeSelected=selected.getRangeAt(0);
+      const selText=selected.toString().trim();
+      if(/^[\p{L}\p{M}'’-]{2,30}$/u.test(selText)){
+        return {spellWord:selText,spellRange:rangeSelected.cloneRange(),spellInput:false};
+      }
+    }
+    if(document.caretRangeFromPoint)range=document.caretRangeFromPoint(event.clientX,event.clientY);
+    else if(document.caretPositionFromPoint){
+      const caret=document.caretPositionFromPoint(event.clientX,event.clientY);
+      if(caret){range=document.createRange();range.setStart(caret.offsetNode,caret.offset);range.collapse(true);}
+    }
+    if(!range||!editor.contains(range.startContainer))return {};
+    textNode=range.startContainer;offset=range.startOffset;
+    if(textNode.nodeType!==3)return {};
+    const value=textNode.nodeValue;
+    const re=/[\p{L}\p{M}][\p{L}\p{M}\p{N}'’-]*/gu;
+    for(const match of value.matchAll(re)){
+      if(match.index<=offset&&offset<=match.index+match[0].length){
+        const wordRange=document.createRange();
+        wordRange.setStart(textNode,match.index);
+        wordRange.setEnd(textNode,match.index+match[0].length);
+        return {spellWord:match[0],spellRange:wordRange,spellInput:false};
+      }
+    }
+    return {};
+  }
+  function applyCorrection(ctx,index){
+    const replacement=ctx?.suggestions?.[index];if(!replacement)return;
+    if(ctx.spellInput){
+      const input=$('note-title');input.focus({preventScroll:true});
+      input.setRangeText(replacement,ctx.spellStart,ctx.spellEnd,'end');
+      onTitleInput();showToast('Corrected');return;
+    }
+    const range=ctx.spellRange;
+    if(!range||!$('rich-editor').contains(range.startContainer)){showToast('Text changed. Try again.');return;}
+    const node=document.createTextNode(replacement);range.deleteContents();range.insertNode(node);
+    range.setStartAfter(node);range.collapse(true);
+    const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+    $('rich-editor').focus({preventScroll:true});savedSelection=range.cloneRange();
+    onEditorInput();showToast('Corrected');
+  }
+  const editorOptions=(hasText,suggestions=[],word='')=>[
+    ...(suggestions.length?suggestions.map((text,i)=>({ico:'check',label:'✓ '+text,action:'spell-apply-'+i})):
+       word?[{ico:'check',label:'Spelling suggestions · browser',action:'spellcheck-help'}]:[]),
+    ...(word?[{divider:true}]:[]),
     ...(hasText?[{ico:'file',label:'Copy',action:'edit-copy'},{ico:'edit',label:'Cut',action:'edit-cut'}]:[]),
     {ico:'file',label:'Paste',action:'edit-paste'},
     {ico:'list',label:'Select all',action:'edit-select-all'},
@@ -392,6 +592,7 @@
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
     hideContext();
+    if(action.startsWith('spell-apply-')){applyCorrection(context,Number(action.slice(12)));return;}
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
       case 'new-note':newNote();break;
@@ -518,9 +719,6 @@
     $('sync-connection').textContent=ownerActive?(cloudStatus==='Saved to cloud'?'Connected · verified':cloudStatus):cloudReady?'Sign-in required':'Not configured';
     $('last-sync-confirmed').textContent=confirmed?new Date(lastConfirmed.at).toLocaleString():'Never verified';
     $('unsynced-count').textContent=dirty?'Pending changes':ownerActive?(confirmed?'None':'Not verified'):'Local device only';
-    $('sync-explanation').textContent=ownerActive?
-      (dirty?'Recent edits are saved locally. Cloud upload and read-back verification are scheduled.':'Cloud sync checks new changes automatically every few seconds.'):
-      'Connect a Cloudflare D1 database and owner-only password, then unlock your vault.';
     $('sync-now').disabled=syncing;$('sign-in').hidden=ownerActive;$('sign-out').hidden=!ownerActive;
     $('cloud-login-fields').hidden=ownerActive;
   }
@@ -703,7 +901,9 @@
         if(!input)saveSelection();
         const sel=window.getSelection(),hasRange=!!(sel?.rangeCount&&editor.contains(sel.anchorNode)&&editor.contains(sel.focusNode));
         const selectionText=input?editor.value.slice(start,end):(hasRange?sel.toString():'');
-        showMenu(e.clientX,e.clientY,editorOptions(!!selectionText),{id:selected,input,start,end,selectionText});return;
+        const point=findPointWord(e,editor);
+        const suggestions=spellingSuggestions(point.spellWord||'');
+        showMenu(e.clientX,e.clientY,editorOptions(!!selectionText,suggestions,point.spellWord||''),{id:selected,input,start,end,selectionText,...point,suggestions});return;
       }
       if(e.target.closest('.desktop-tabbar')){showMenu(e.clientX,e.clientY,tabBlankOptions(),{id:selected});return;}
       showMenu(e.clientX,e.clientY,appOptions(),{id:selected});
@@ -741,9 +941,34 @@
       // Paste as plain text; rich formatting must be intentionally applied.
       e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));onEditorInput();
     });
+    // Pointer events are the reliable activation path on desktop and touch.
+    // Stop the contenteditable caret jumping onto a non-editable checkbox.
+    let lastCheckboxPointer=null,lastCheckboxPointerTime=0;
+    editor.addEventListener('pointerdown',e=>{
+      if(e.target.closest('[data-checkbox]'))e.preventDefault();
+    });
+    editor.addEventListener('pointerup',e=>{
+      const box=e.target.closest('[data-checkbox]');
+      if(box){
+        e.preventDefault();
+        lastCheckboxPointer=box;lastCheckboxPointerTime=Date.now();
+        toggleCheckbox(box);
+      }
+    });
+    editor.addEventListener('keydown',e=>{
+      if(e.target.closest('[data-checkbox]')){
+        if(e.key===' '||e.key==='Enter'){e.preventDefault();toggleCheckbox(e.target.closest('[data-checkbox]'));}
+        return;
+      }
+      checklistEnter(e);
+    });
     editor.addEventListener('click',e=>{
       const checkbox=e.target.closest('[data-checkbox]');
-      if(checkbox){const on=checkbox.dataset.checkbox==='1';checkbox.dataset.checkbox=on?'0':'1';checkbox.textContent=on?'☐':'☑';onEditorInput();return;}
+      if(checkbox){
+        e.preventDefault();e.stopPropagation();
+        if(checkbox!==lastCheckboxPointer||Date.now()-lastCheckboxPointerTime>550)toggleCheckbox(checkbox);
+        return;
+      }
       const link=e.target.closest('a[data-note-id]');
       if(link && (e.metaKey||e.ctrlKey)){openNote(link.dataset.noteId);}
     });
@@ -799,10 +1024,11 @@
     $('focus-button').addEventListener('click',toggleFocus);
     $('theme-toggle').addEventListener('click',toggleTheme);
     $('settings-theme-toggle').addEventListener('click',toggleTheme);
-    $('writing-font').addEventListener('change',e=>{writingFont=e.target.value;localStorage.setItem(FONT,writingFont);applyTheme();showToast('Writing font updated');});
+    $('writing-font').addEventListener('change',e=>{writingFont=fontChoices.includes(e.target.value)?e.target.value:'system';localStorage.setItem(FONT,writingFont);applyTheme();showToast('Font updated');});
+    $('font-size-down').addEventListener('click',()=>changeFontSize(-1));
+    $('font-size-up').addEventListener('click',()=>changeFontSize(1));
     $('cloud-button').addEventListener('click',settingsOpen);
     $('sidebar-cloud').addEventListener('click',settingsOpen);
-    $('rail-settings').addEventListener('click',settingsOpen);
     $('settings-close').addEventListener('click',()=>$('settings-modal').close());
     $('sign-in').addEventListener('click',unlock);
     $('sign-out').addEventListener('click',signOut);

@@ -470,3 +470,97 @@ body.panel-hidden .app-shell{grid-template-columns:58px 270px minmax(0,1fr)}
   .note-group{margin-inline:7px}
 }
 @media(prefers-reduced-motion:reduce){.note-preview{animation:none!important}}
+
+
+/* MX Note — dock visibility, crisp font controls, tidy settings */
+html,body{overflow:hidden}
+.app-shell{height:calc(100dvh - 20px);width:calc(100% - 20px);margin:10px auto;max-height:calc(100dvh - 20px)}
+.editor-pane{min-height:0;overflow:hidden}
+.editor-scroll{min-height:0;flex:1 1 auto}
+.writing-controls{
+  display:flex;align-items:center;flex:none;
+  height:58px;min-height:58px;max-height:58px;
+  padding:7px 18px;gap:5px;justify-content:flex-start;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+  overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;
+}
+.writing-controls>.format-btn,.writing-controls>.format-divider,
+.writing-controls>.toolbar-select-wrap,.writing-controls>.text-size-controls{flex-shrink:0}
+.writing-controls .writing-spacer{flex:1 1 auto;min-width:0}
+.editor-footer{height:27px;min-height:27px;flex:0 0 27px;overflow:hidden;white-space:nowrap}
+.format-divider{margin:0 6px}
+.toolbar-select-wrap{display:flex;align-items:center;max-width:178px}
+.toolbar-select-wrap select{
+  width:154px;max-width:100%;height:34px;
+  appearance:auto;background:#212831;border:1px solid #39434e;
+  border-radius:9px;color:#dde5ee;font:500 12px var(--sans);
+  padding:0 8px;cursor:pointer;
+}
+.toolbar-select-wrap select:focus-visible{outline:2px solid #7c9fc2;outline-offset:2px}
+.text-size-controls{
+  display:flex;align-items:center;gap:1px;background:#1e252c;
+  border:1px solid #353f49;border-radius:9px;padding:1px 2px;height:35px;
+}
+.text-size-controls .size-step{width:35px;min-width:35px;height:30px;font-size:12px;font-weight:650}
+#font-size-label{display:inline-flex;justify-content:center;align-items:center;width:26px;color:#d5dce5;font:500 11px var(--mono);font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;border:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+:root{--editor-font-size:16px}
+[data-writing-font="system"]{--writing-font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+[data-writing-font="obsidian"]{--writing-font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+[data-writing-font="arial"]{--writing-font:Arial,Helvetica,sans-serif}
+[data-writing-font="calibri"]{--writing-font:Calibri,"Segoe UI",Arial,sans-serif}
+[data-writing-font="reading"]{--writing-font:Georgia,"Times New Roman",serif}
+[data-writing-font="times"]{--writing-font:"Times New Roman",Times,serif}
+[data-writing-font="courier"]{--writing-font:"Courier New",Courier,monospace}
+[data-writing-font="mono"]{--writing-font:"IBM Plex Mono","Courier New",monospace}
+[data-writing-font="cairo"]{--writing-font:"Cairo",Arial,sans-serif}
+[data-writing-font="naskh"]{--writing-font:"Noto Naskh Arabic","Times New Roman",serif}
+.rich-editor{font-family:var(--writing-font);font-size:var(--editor-font-size);line-height:1.82}
+.rich-editor:focus{font-family:var(--writing-font)}
+.rich-editor [data-checklist="1"]{display:block;min-height:1.75em;line-height:1.75;padding-inline-start:0}
+.rich-editor [data-checkbox]{
+  display:inline-grid;place-items:center;
+  width:22px;height:24px;margin-inline-end:6px;
+  border-radius:5px;vertical-align:-4px;
+  font:22px/1 var(--sans);cursor:pointer;
+  user-select:none;-webkit-user-select:none;
+  touch-action:manipulation;outline-offset:2px;
+}
+.rich-editor [data-checkbox]:hover{background:#91b7e020}
+.rich-editor [data-checkbox]:focus-visible{outline:2px solid #85a9cf}
+.rich-editor [data-checkbox="1"]{color:#84c09e}
+.modal{max-height:min(90dvh,790px);padding:22px}
+.modal .modal-head{margin-bottom:12px}
+.modal .modal-kicker{font-size:9px;letter-spacing:1.5px}
+.modal .modal-head h2{font-size:19px}
+.modal .sync-verification{margin:0 0 12px}
+.modal .verify-help{display:none}
+.modal .appearance-setting{margin-bottom:0;min-height:66px}
+.modal .appearance-setting p{margin:6px 0 0}
+.modal .modal-rule{margin:17px 0}
+.modal .form-feedback{min-height:0}
+[data-theme="light"] .toolbar-select-wrap select{background:#fff;color:#34516a;border-color:#bacad6}
+[data-theme="light"] .text-size-controls{background:#e8eef4;border-color:#c8d6e1}
+[data-theme="light"] #font-size-label{color:#34516a}
+[data-theme="light"] .rich-editor [data-checkbox]:hover{background:#7e9fb325}
+@media(max-width:760px){
+  .app-shell{width:100%;height:100dvh;max-height:100dvh;margin:0}
+  .editor-pane{height:100dvh}
+  .writing-controls{
+    position:absolute;bottom:calc(60px + env(safe-area-inset-bottom,0px));
+    left:0;right:0;height:55px;min-height:55px;max-height:55px;
+    padding:6px 10px;gap:4px;justify-content:flex-start;
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  }
+  .writing-controls::-webkit-scrollbar{display:none}
+  .writing-controls .writing-spacer{display:none}
+  .format-btn{flex-shrink:0}
+  .toolbar-select-wrap select{width:133px;height:35px}
+  .text-size-controls{height:35px}
+  .rich-editor{font-size:var(--editor-font-size);line-height:1.85}
+  .editor-footer{display:none}
+  .editor-scroll{min-height:0;overscroll-behavior:contain}
+  .editing .writing-controls{bottom:env(safe-area-inset-bottom,0px)}
+  .editing .editor-pane{padding-bottom:calc(55px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:400px){.writing-controls{padding-inline:8px}}
