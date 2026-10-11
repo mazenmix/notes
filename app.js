@@ -710,7 +710,7 @@
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-group-toggle]');
+      const target=e.target.closest('[data-folder],[data-note-id],[data-tab]');
       if(!target)return;
       clearTimeout(longTimer);
       longTimer=setTimeout(()=>{
@@ -718,7 +718,7 @@
         else if(target.dataset.noteId||target.dataset.tab){
           const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
           if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
-        }else if(target.dataset.groupToggle)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.groupToggle),{folder:target.dataset.groupToggle});
+        }
         skipClickUntil=Date.now()+650;navigator.vibrate?.(12);
       },520);
     };
