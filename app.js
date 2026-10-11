@@ -263,14 +263,65 @@
     if(!savedSelection)return;
     try{const sel=window.getSelection();sel.removeAllRanges();sel.addRange(savedSelection);}catch(e){}
   }
+  function moveCaretAfterCheckbox(block){
+    if(!block)return;
+    const checkbox=block.querySelector('[data-checkbox]');
+    let tail=checkbox?.nextSibling;
+    if(!tail||tail.nodeType!==3){tail=document.createTextNode('\u00a0');checkbox?.after(tail);}
+    const range=document.createRange();
+    range.setStart(tail,Math.min(tail.textContent.length,1));
+    range.collapse(true);
+    const selection=window.getSelection();
+    selection.removeAllRanges();selection.addRange(range);
+    $('rich-editor').focus({preventScroll:true});
+    savedSelection=range.cloneRange();
+  }
+  function toggleCheckbox(checkbox){
+    if(!checkbox)return;
+    const next=checkbox.dataset.checkbox==='1'?'0':'1';
+    checkbox.dataset.checkbox=next;
+    checkbox.setAttribute('aria-checked',String(next==='1'));
+    checkbox.textContent=next==='1'?'☑':'☐';
+    onEditorInput();
+  }
+  function checklistEnter(event){
+    if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.metaKey)return;
+    const selection=window.getSelection();
+    const anchor=selection?.anchorNode;
+    const root=anchor?.nodeType===1?anchor:anchor?.parentElement;
+    const block=root?.closest('p[data-checklist="1"]');
+    if(!block||!selection?.rangeCount)return;
+    event.preventDefault();
+    const range=selection.getRangeAt(0).cloneRange();
+    if(!range.collapsed)range.deleteContents();
+    const filled=block.textContent.replace(/[☐☑\u00a0\u200b]/gu,'').trim();
+    if(!filled){
+      const paragraph=document.createElement('p');
+      paragraph.appendChild(document.createElement('br'));
+      block.replaceWith(paragraph);
+      const caret=document.createRange();caret.setStart(paragraph,0);caret.collapse(true);
+      selection.removeAllRanges();selection.addRange(caret);savedSelection=caret.cloneRange();
+    }else{
+      const remaining=range.cloneRange();
+      remaining.setEnd(block,block.childNodes.length);
+      const suffix=remaining.extractContents();
+      const next=document.createElement('p');next.dataset.checklist='1';
+      next.innerHTML='<span data-checkbox="0" contenteditable="false" role="checkbox" aria-label="Checklist item" aria-checked="false" tabindex="0">☐</span>&nbsp;';
+      next.appendChild(suffix);
+      block.after(next);
+      moveCaretAfterCheckbox(next);
+    }
+    onEditorInput();
+  }
   function format(cmd,val=null){
     const editor=$('rich-editor');
     editor.focus({preventScroll:true});restoreSelection();
     if(cmd==='checklist'){
-      document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false" role="checkbox" tabindex="0" aria-checked="false">☐</span> </p>');
-      const sel=window.getSelection(),block=sel?.anchorNode?.parentElement?.closest('[data-checklist="1"]');
-      if(block){const tail=block.lastChild;if(tail?.nodeType===3){const range=document.createRange();range.setStart(tail,tail.length);range.collapse(true);sel.removeAllRanges();sel.addRange(range);}}
-      editor.focus({preventScroll:true});
+      const before=new Set(editor.querySelectorAll('p[data-checklist="1"]'));
+      document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false" role="checkbox" aria-label="Checklist item" aria-checked="false" tabindex="0">☐</span>&nbsp;</p>');
+      const newBlock=[...editor.querySelectorAll('p[data-checklist="1"]')].find(p=>!before.has(p));
+      if(newBlock)moveCaretAfterCheckbox(newBlock);
+      else editor.focus({preventScroll:true});
     }else if(cmd==='createLink'){
       ask('Insert a link','Existing note title or https:// URL','').then(target=>{
         if(!target?.trim())return;
@@ -748,9 +799,19 @@
       // Paste as plain text; rich formatting must be intentionally applied.
       e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));onEditorInput();
     });
+    editor.addEventListener('pointerdown',e=>{
+      if(e.target.closest('[data-checkbox]'))e.preventDefault();
+    });
+    editor.addEventListener('keydown',e=>{
+      if(e.target.closest('[data-checkbox]')){
+        if(e.key===' '||e.key==='Enter'){e.preventDefault();toggleCheckbox(e.target.closest('[data-checkbox]'));}
+        return;
+      }
+      checklistEnter(e);
+    });
     editor.addEventListener('click',e=>{
       const checkbox=e.target.closest('[data-checkbox]');
-      if(checkbox){const on=checkbox.dataset.checkbox==='1';checkbox.dataset.checkbox=on?'0':'1';checkbox.textContent=on?'☐':'☑';onEditorInput();return;}
+      if(checkbox){e.preventDefault();e.stopPropagation();toggleCheckbox(checkbox);return;}
       const link=e.target.closest('a[data-note-id]');
       if(link && (e.metaKey||e.ctrlKey)){openNote(link.dataset.noteId);}
     });
