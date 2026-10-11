@@ -51,3 +51,5 @@ No Supabase account or keys are used by this version.
 No proprietary iA Writer or Obsidian font files are bundled. The font is **Inter** with local system fallbacks.
 
 Made for MazenmiX.
+
+<!-- Redeploy trigger: refresh Cloudflare Pages Production environment bindings on 2026-10-11. -->
