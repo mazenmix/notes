@@ -85,6 +85,7 @@
           <div id="rich-editor" class="rich-editor" dir="auto" contenteditable="true" role="textbox" aria-label="Note content" aria-multiline="true" data-placeholder="Start writing..." spellcheck="true"></div>
           <div class="editor-bottom-space"></div>
         </div>
+        <section class="folder-view" id="folder-view" hidden aria-label="Folder notes"></section>
       </div>
       <div class="writing-controls" id="writing-controls" role="toolbar" aria-label="Text formatting">
         <button id="style-picker" class="format-btn format-style" type="button" title="Text styles" aria-label="Text styles"><span class="style-symbol">Aa</span><svg><use href="#i-chevron"/></svg></button>
@@ -140,6 +141,10 @@
       <div class="verify-line"><span>Last confirmed cloud sync</span><strong id="last-sync-confirmed">Never</strong></div>
       <div class="verify-line"><span>Unsynced changes</span><strong id="unsynced-count">Not connected</strong></div>
       <button class="sync-now-button" id="sync-now" type="button"><svg><use href="#i-refresh"/></svg> Sync now & verify</button>
+    </section>
+    <section class="autocorrect-setting" aria-label="Auto correction">
+      <label for="auto-correct"><span class="settings-section-label">Writing</span><span>Auto-correct clear typos after Space</span></label>
+      <input id="auto-correct" type="checkbox" />
     </section>
     <section class="appearance-setting" aria-label="Appearance">
       <div><span class="settings-section-label">Appearance</span><p id="theme-mode">Dark mode</p></div>

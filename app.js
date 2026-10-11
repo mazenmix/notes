@@ -6,7 +6,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const uuid=()=>crypto?.randomUUID?.()||'note-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   const stamp=()=>new Date().toISOString();
-  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',VERIFIED='mxnotes.d1.lastVerified';
+  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',AUTOCORRECT='mxnotes.writing.autocorrect',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
     version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
@@ -77,7 +77,7 @@
         folder:String(n.folder||'Inbox').slice(0,100),
         html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
         updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
-        starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted
+        starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
       }))
     };
   }
@@ -87,12 +87,22 @@
   catch(e){console.warn('Local notes backup issue',e);state=normalize(seeded());}
   let ui;
   try{ui=JSON.parse(localStorage.getItem(VIEW)||'{}')||{};}catch(e){ui={};}
-  let tabs=(Array.isArray(ui.tabs)?ui.tabs:[]).filter(id=>state.notes.some(n=>n.id===id));
-  let selected=state.notes.some(n=>n.id===ui.selected)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
-  if(selected&&!tabs.includes(selected))tabs.push(selected);
+  const folderKey=folder=>'folder:'+folder;
+  const isFolderTab=id=>typeof id==='string'&&id.startsWith('folder:');
+  const tabExists=id=>isFolderTab(id)?(id==='folder:Inbox'||state.folders.includes(id.slice(7))):!!state.notes.find(n=>n.id===id&&!n.purged);
+  let tabs=(Array.isArray(ui.tabs)?ui.tabs:[]).filter(tabExists);
+  let selected=state.notes.some(n=>n.id===ui.selected&&!n.purged)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
+  let activeTab=tabExists(ui.activeTab)?ui.activeTab:selected;
+  if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
   let filter='all',search='',theme=localStorage.getItem(THEME)==='light'?'light':'dark';
   let focusMode=false,isEditing=false,cloudReady=false,ownerActive=false;
-  let notesCollapsed=!!ui.notesCollapsed,collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]),expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
+  const sidebarUpgradeKey='mxnotes.ui.organized-2026-10';
+  let notesCollapsed=localStorage.getItem(sidebarUpgradeKey)!=='1'?true:!!ui.notesCollapsed;
+  if(localStorage.getItem(sidebarUpgradeKey)!=='1')localStorage.setItem(sidebarUpgradeKey,'1');
+  let collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]);
+  let expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
+  let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
+  let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
   const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
   let writingFont=fontChoices.includes(localStorage.getItem(FONT))?localStorage.getItem(FONT):'system';
@@ -101,7 +111,7 @@
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
   const current=()=>state.notes.find(n=>n.id===selected)||null;
-  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived);
+  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived&&!n.purged);
   const findNote=id=>state.notes.find(n=>n.id===id);
   const timeAgo=date=>{
     const seconds=Math.max(0,Math.floor((Date.now()-Date.parse(date||stamp()))/1000));
@@ -111,7 +121,7 @@
   const plain=html=>{const d=document.createElement('div');d.innerHTML=safeHtml(html);return d.innerText||d.textContent||'';};
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
-  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],lastClosedTab}));}
+  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],lastClosedTab}));}
   function persist(remote=true){
     pristine=false;
     state.updatedAt=stamp();
@@ -133,6 +143,7 @@
     $('writing-font').value=writingFont;
     document.documentElement.style.setProperty('--editor-font-size',writingSize+'px');
     $('font-size-label').textContent=writingSize;
+    $('auto-correct').checked=autoCorrect;
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=theme==='light'?'#f8fafb':'#101214';
   }
@@ -140,30 +151,47 @@
   function changeFontSize(delta){writingSize=Math.max(12,Math.min(28,writingSize+delta));localStorage.setItem(FONT_SIZE,String(writingSize));applyTheme();}
   function noteTabs(){
     const wrapper=$('open-tabs');
-    wrapper.innerHTML=tabs.map(id=>{
-      const n=findNote(id);if(!n)return'';
-      return '<div class="note-tab '+(id===selected?'active':'')+'" role="tab" aria-selected="'+(id===selected)+'" data-tab="'+esc(id)+'">'+icon('file')+
-        '<span class="note-tab-title">'+esc(n.title)+'</span><button class="tab-close" data-close-tab="'+esc(id)+'" title="Close tab" aria-label="Close '+esc(n.title)+'">'+icon('x')+'</button></div>';
+    wrapper.innerHTML=tabs.filter(tabExists).map(id=>{
+      const folder=isFolderTab(id),n=folder?null:findNote(id);
+      const name=folder?id.slice(7):n?.title||'Untitled';
+      return '<div class="note-tab '+(id===activeTab?'active':'')+'" role="tab" aria-selected="'+(id===activeTab)+'" data-tab="'+esc(id)+'">'+icon(folder?'folder':'file')+
+        '<span class="note-tab-title" dir="auto">'+esc(name)+'</span><button class="tab-close" data-close-tab="'+esc(id)+'" title="Close tab" aria-label="Close '+esc(name)+'">'+icon('x')+'</button></div>';
     }).join('');
     wrapper.querySelector('.note-tab.active')?.scrollIntoView({block:'nearest',inline:'nearest'});
+  }
+  function openTab(id){
+    if(isFolderTab(id)){openFolder(id.slice(7));return;}
+    openNote(id);
+  }
+  function openFolder(folder){
+    if(folder!=='Inbox'&&!state.folders.includes(folder))return;
+    if(isEditing)commitEditor();
+    const id=folderKey(folder);
+    if(!tabs.includes(id))tabs.push(id);
+    activeTab=id;filter='folder:'+folder;search='';$('search').value='';
+    saveUi();renderAll();closePanels();
   }
   function openNote(id){
     if(!findNote(id))return;
     if(isEditing)commitEditor();
-    selected=id;if(!tabs.includes(id))tabs.push(id);
+    selected=id;activeTab=id;
+    if(!tabs.includes(id))tabs.push(id);
     saveUi();renderAll();closePanels();
   }
   function closeTab(id){
     const i=tabs.indexOf(id);if(i<0)return;
     lastClosedTab=id;tabs.splice(i,1);
-    if(selected===id)selected=tabs[Math.min(i,tabs.length-1)]||visible()[0]?.id||null;
-    if(selected&&!tabs.includes(selected))tabs.push(selected);
+    if(activeTab===id){
+      activeTab=tabs[Math.min(i,tabs.length-1)]||visible()[0]?.id||null;
+      if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
+      if(activeTab&&!isFolderTab(activeTab))selected=activeTab;
+    }
     saveUi();renderAll();
   }
   function newNote(folder=filter.startsWith('folder:')?filter.slice(7):'Personal'){
     commitEditor();
     const n={id:uuid(),title:'Untitled',folder,html:'',updatedAt:stamp(),starred:false,archived:false,deleted:false};
-    state.notes.push(n);selected=n.id;tabs.push(n.id);filter='all';search='';$('search').value='';
+    state.notes.push(n);selected=n.id;activeTab=n.id;if(!tabs.includes(n.id))tabs.push(n.id);filter='all';search='';$('search').value='';
     persist();saveUi();renderAll();closePanels();$('note-title').focus();$('note-title').select();
   }
   function touchNote(n){n.updatedAt=stamp();persist();renderSidebar();noteTabs();updateSummary();}
@@ -180,19 +208,19 @@
     const quick=[['inbox','Inbox','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
-      ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted).length],
+      ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted&&!n.purged).length],
       ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    $('folder-list').innerHTML=folders.map(f=>'<button class="folder-item '+(filter==='folder:'+f?'active':'')+'" data-folder="'+esc(f)+'" title="Right-click for folder options">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button>').join('');
-    let notes=filter==='trash'?state.notes.filter(n=>n.deleted):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted):live;
+    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'"><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
+    let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
     if(filter==='inbox')notes=notes.filter(n=>n.folder==='Inbox');
     if(filter.startsWith('folder:'))notes=notes.filter(n=>n.folder===filter.slice(7));
     if(search.trim()){
       const q=search.toLocaleLowerCase();
-      notes=state.notes.filter(n=>!n.deleted&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
+      notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
     }
     notes.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
     $('notes-total').textContent=notes.length;
@@ -213,7 +241,8 @@
       const folded=collapsedGroups.has(folder);
       return '<section class="note-group"><button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
         '<span dir="auto">'+esc(folder)+'</span><span class="count">'+items.length+'</span></button>'+
-        (folded?'':'<div class="note-group-items">'+items.map(renderNote).join('')+'</div>')+'</section>';
+        (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:4).map(renderNote).join('')+
+          (items.length>4?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+'</div>')+'</section>';
     }).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
   }
   function updateSummary(){
@@ -223,7 +252,25 @@
     $('character-count').textContent=text.length.toLocaleString()+' characters';
     $('note-updated').textContent='Edited '+timeAgo(n.updatedAt);
   }
+  function renderFolderView(folder){
+    const all=visible().filter(n=>n.folder===folder).sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
+    const titled=all.filter(n=>n.title.trim().toLocaleLowerCase()!=='untitled');
+    const drafts=all.filter(n=>n.title.trim().toLocaleLowerCase()==='untitled');
+    const card=n=>'<button class="folder-note-card" data-folder-note="'+esc(n.id)+'"><span class="folder-card-icon">'+icon('file')+'</span><span class="folder-card-detail"><strong dir="auto">'+esc(n.title)+'</strong><small dir="auto">'+esc(plain(n.html).trim().slice(0,100)||'Empty note')+'</small></span><time>'+esc(timeAgo(n.updatedAt))+'</time></button>';
+    $('folder-view').innerHTML='<div class="folder-view-head"><div class="editor-eyebrow">FOLDER · '+all.length+' NOTES</div><h1 dir="auto">'+esc(folder)+'</h1><button class="folder-create" data-new-in-folder="'+esc(folder)+'">'+icon('plus')+' New note</button></div>'+
+      (titled.length?'<div class="folder-view-list">'+titled.map(card).join('')+'</div>':'')+
+      (drafts.length?'<details class="folder-drafts"><summary>'+icon('chevron')+' Untitled drafts <span>'+drafts.length+'</span></summary><div class="folder-view-list">'+drafts.map(card).join('')+'</div></details>':'')+
+      (!all.length?'<div class="folder-empty">This folder is empty. Create a note to get started.</div>':'');
+  }
   function renderEditor(){
+    const isFolder=isFolderTab(activeTab);
+    $('folder-view').hidden=!isFolder;
+    document.querySelector('.editor-content').hidden=isFolder;
+    document.body.classList.toggle('folder-tab-active',isFolder);
+    if(isFolder){const name=activeTab.slice(7);renderFolderView(name);
+      $('breadcrumb').textContent='Folders / '+name;
+      $('mobile-title').innerHTML=esc(name)+' '+icon('chevron');
+      $('editor-scroll').scrollTop=0;return;}
     const n=current();
     $('note-title').disabled=!n;
     $('rich-editor').contentEditable=n?'true':'false';
@@ -235,7 +282,16 @@
     updateSummary();
     $('editor-scroll').scrollTop=0;
   }
-  function renderAll(){renderSidebar();noteTabs();renderEditor();updateCloudUI();}
+  function renderAll(){
+    tabs=tabs.filter(tabExists);
+    if(!tabExists(activeTab)){
+      activeTab=tabs.at(-1)||visible()[0]?.id||null;
+      if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
+    }
+    if(!state.notes.some(n=>n.id===selected&&!n.purged))selected=visible()[0]?.id||null;
+    if(activeTab&&!isFolderTab(activeTab))selected=activeTab;
+    renderSidebar();noteTabs();renderEditor();updateCloudUI();
+  }
   function commitEditor(){
     const n=current();if(!n)return;
     const html=safeHtml($('rich-editor').innerHTML);
@@ -392,6 +448,7 @@
     {ico:'trash',label:n.deleted?'Delete permanently':'Move to trash',action:'delete-note',danger:true},
     ...(n.deleted?[{ico:'refresh',label:'Restore',action:'restore-note'}]:[])
   ];
+  const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
     {ico:'edit',label:'Rename folder',action:'folder-rename'},
@@ -399,7 +456,13 @@
     {divider:true},
     {ico:'trash',label:'Delete folder',action:'folder-delete',danger:true}
   ];
-  const appOptions=()=>[
+  const appOptions=()=>isFolderTab(activeTab)?[
+    {ico:'plus',label:'New note in this folder',action:'active-folder-new'},
+    {ico:'edit',label:'Rename this folder',action:'active-folder-rename'},
+    {ico:'x',label:'Close folder tab',action:'close-tab'},
+    {divider:true},
+    {ico:'refresh',label:'Sync now',action:'sync'}
+  ]:[
     {ico:'plus',label:'New note',action:'new-note'},
     {ico:'folder',label:'New folder',action:'new-folder'},
     {divider:true},
@@ -413,7 +476,7 @@
   ];
   const tabBlankOptions=()=>[
     {ico:'plus',label:'New note in tab',action:'new-note'},
-    ...(lastClosedTab&&findNote(lastClosedTab)?[{ico:'refresh',label:'Reopen closed tab',action:'restore-tab'}]:[]),
+    ...(lastClosedTab&&tabExists(lastClosedTab)?[{ico:'refresh',label:'Reopen closed tab',action:'restore-tab'}]:[]),
     {ico:'file',label:'Close active tab',action:'close-tab'},
     {ico:'x',label:'Close other tabs',action:'close-other-tabs'},
     {divider:true},
@@ -423,6 +486,65 @@
 
   // Fast, private offline spelling hints. Built-in browser spellcheck remains
   // available with Shift + right-click for its full installed dictionaries.
+  // This list is deliberately conservative. Only explicit, unambiguous typos
+  // are automatically replaced on Space; other candidates remain suggestions.
+  const autoFixPairs={
+    teh:'the',adn:'and',thier:'their',recieve:'receive',recieved:'received',
+    acheive:'achieve',beleive:'believe',becuase:'because',becouse:'because',
+    definetly:'definitely',definately:'definitely',seperate:'separate',
+    adress:'address',addres:'address',enviroment:'environment',
+    goverment:'government',occurence:'occurrence',occured:'occurred',
+    succesful:'successful',sucess:'success',freind:'friend',
+    freinds:'friends',wierd:'weird',untill:'until',wich:'which',
+    langauge:'language',mesage:'message',messege:'message',
+    tommorow:'tomorrow',tommorrow:'tomorrow',immediatly:'immediately',
+    begining:'beginning',writting:'writing',comming:'coming',
+    beleif:'belief',seperately:'separately',grammer:'grammar',
+    neccessary:'necessary',necesary:'necessary',expierence:'experience',
+    calender:'calendar',resturant:'restaurant',privat:'private',
+    notees:'notes',sycn:'sync',cluod:'cloud',becasue:'because',
+    woud:'would',shoud:'should',coud:'could',qick:'quick',
+    هاذا:'هذا',هاذه:'هذه',لاكن:'لكن',الكن:'لكن',
+    اللغه:'اللغة',مدرسه:'مدرسة',تجربه:'تجربة',
+    كتابه:'كتابة',ملاحظه:'ملاحظة',ملاخظة:'ملاحظة',
+    الملاحضات:'الملاحظات',الملاحضه:'الملاحظة',
+    حتي:'حتى',اليومم:'اليوم',سوال:'سؤال',
+    شيئ:'شيء',بالتاكيد:'بالتأكيد',
+    الضاهر:'الظاهر',الظابط:'الضابط',الغه:'اللغة',
+    الاخطااء:'الأخطاء',الكلماات:'الكلمات'
+  };
+  Object.assign(autoFixPairs,{
+    transportationn:'transportation',transportaion:'transportation',transportaton:'transportation',
+    achivement:'achievement',acheivement:'achievement',acheivment:'achievement',
+    acess:'access',acesss:'access',accomodate:'accommodate',
+    acommodate:'accommodate',arguement:'argument',arguements:'arguments',
+    basicly:'basically',beutiful:'beautiful',beautifull:'beautiful',
+    commited:'committed',committment:'commitment',conection:'connection',
+    conected:'connected',conected:'connected',curiousity:'curiosity',
+    decison:'decision',developement:'development',diffrent:'different',
+    differnt:'different',dissapear:'disappear',embarass:'embarrass',
+    embarassing:'embarrassing',existance:'existence',experiance:'experience',
+    exellent:'excellent',explaination:'explanation',extention:'extension',
+    febuary:'february',finaly:'finally',foriegn:'foreign',
+    fourty:'forty',gramatically:'grammatically',happend:'happened',
+    happendd:'happened',heigth:'height',improvment:'improvement',
+    intresting:'interesting',intrested:'interested',knowlege:'knowledge',
+    learing:'learning',lisence:'license',maintainance:'maintenance',
+    managment:'management',neccesary:'necessary',noticable:'noticeable',
+    occassion:'occasion',ocassion:'occasion',oppurtunity:'opportunity',
+    oportunity:'opportunity',paralell:'parallel',perfomance:'performance',
+    persistant:'persistent',personnal:'personal',privelege:'privilege',
+    profesion:'profession',profesional:'professional',pronounciation:'pronunciation',
+    recomend:'recommend',reccomend:'recommend',relevent:'relevant',
+    remmember:'remember',responsiblity:'responsibility',restaraunt:'restaurant',
+    securty:'security',similiar:'similar',sincerly:'sincerely',
+    succesfully:'successfully',sucessfully:'successfully',surpise:'surprise',
+    throught:'through',transfered:'transferred',truely:'truly',
+    unfortunatly:'unfortunately',unneccessary:'unnecessary',usefull:'useful',
+    vaccum:'vacuum',wether:'whether',writter:'writer',
+    الإملائيه:'الإملائية',المجموعه:'المجموعة',الكومبيوتر:'الكمبيوتر',
+    المعلوماتت:'المعلومات',الرساله:'الرسالة',الصفحه:'الصفحة',التطبيقق:'التطبيق'
+  });
   const correctionPairs={
     teh:'the',adn:'and',thier:'their',recieve:'receive',recieved:'received',
     acheive:'achieve',beleive:'believe',becuase:'because',becouse:'because',
@@ -453,6 +575,9 @@
     لوحه:'لوحة',الكلمه:'الكلمة',الكلماات:'الكلمات',
     ايميل:'إيميل',الانكليزيه:'الإنكليزية'
   };
+  // Extra frequent-word vocabulary for offline right-click candidates.
+  const extraWords=(`
+    address addresses addressing accepted access accurate accuracy action active actual add added adding admin advice affect again against airplane album align all already always amazing analysis android anniversary another answer answered answers apartment apparent appearance apple approach apps april arabic archive archived article artificial assistant atmosphere auto automatic automatically available aware background backup basic beautiful beauty become beginning believe beyond browser business button calendar cancel category celebration center century certain change changed changes changing chart check checking checklist checked child children choice choose cloud code collection comfortable communication compare complete completed computer connection connections connect connected continue continued conversation correct corrected correction correctly country create created creating creative creativity customer customers dashboard database data date daughter decision decorative delay delete deleted deleting design designer desktop determine development device dictionary difference different digital direct directly disable discover discovery display displays document documents download downloaded drag dynamic easily education effective efficiently electric electronic electricity elegant email emails enable enabled encouragement english enormous enough enter entered environment especially essential example exactly excellent exception excitement exercise experience explain explanation extension favorite favorites feature features February financial finally finished flight focus folder folders follow following font fonts formatting forward frequent frequently friends future geography github global government grammar great group groups guidance hamburger helpful history holiday home hours hover human idea ideas identity illustration image images improve improved improvements information input insert inside instagram installation installed integration interaction internet intuitive invitation issue javascript journey language languages latest layout leading learning leave leaving left letter lightweight limits link linked links listen location login long look looking lovely lunch manual march media medical medium memory menu menus message messages microsoft miles millions minute minutes mobile model month months morning moving music native navigation network news night note notes notice november number numbers obvious office offline official online open opened option options ordered organization organise organize original output outside paragraph paragraphs partner password passwords performance personal phone phrase picture pictures pinned platform please plugin polish possible practical prefer preference preferences prepare present previous privacy private product project publish punctuation quick quiet reach reading ready receive recent recommend recommendation reconnect reconnecting recover recovery redirect reduced reference refresh regular relevant reliable remember reminder remove removed repeat replace replaced report request requested reserve response responsive result restore restored retry review right risk romance romantic routine save saved saving schedule search secure security select selected selection sentences september session settings sharing shopping should side sidebar signup similar simple simplify skill small smooth solution solve source space special spelling standard start started state status stay sticky storage store strong structure style successful suggestions summary support supported sure syntax system table tab tabs tag tagalog task technical technology test tested testing text textarea theme themes third thought thoughtful thread time title today tomorrow tonight tool tools translate translated translation travel travel time trash tricky trust tutorial type typing uncle under underline undone undo unique unlock updated upload user users useful utility vacation value verify version video view visitor visible voice warm weather web website welcome window windows word words work working workspace would writing written wrong year yesterday`).split(/\s+/u);
   const commonWords=new Set((
     'the and that this these those what when where which while whether with within without '+
     'note notes writing written writer word words writing correction spell spelling suggestions '+
@@ -474,6 +599,7 @@
     'الكمبيوتر الحاسوب العربية العراق بغداد الحياة العمل البيت الصديق الوقت '+
     'رسالة الرسالة النص الكلمات كتاب العربية هاي هسه بعد ويا عليها عليها تمام'
   ).split(/\s+/u).filter(Boolean).map(w=>w.toLocaleLowerCase()));
+  for(const w of extraWords)commonWords.add(w.toLocaleLowerCase());
   function wordDistance(a,b){
     const row=Array.from({length:b.length+1},(_,i)=>i);
     for(let i=1;i<=a.length;i++){
@@ -491,6 +617,7 @@
     const lower=word.toLocaleLowerCase(),direct=correctionPairs[lower];
     const upperFirst=w=>word[0]===word[0].toUpperCase()&&word[0]!==word[0].toLowerCase()?w[0].toUpperCase()+w.slice(1):w;
     if(direct)return [upperFirst(direct)];
+    if(autoFixPairs[lower])return [upperFirst(autoFixPairs[lower])];
     if(commonWords.has(lower))return [];
     const max=lower.length>8?2:1;
     const scored=[];
@@ -500,6 +627,40 @@
       if(distance>0&&distance<=max)scored.push({candidate,distance});
     }
     return scored.sort((a,b)=>a.distance-b.distance||a.candidate.length-b.candidate.length).slice(0,3).map(x=>upperFirst(x.candidate));
+  }
+
+  function autoCorrectOnSpace(e,editor){
+    if(!autoCorrect||e.inputType!=='insertText'||e.data!==' '||e.isComposing)return;
+    const selection=window.getSelection();
+    if(!selection?.rangeCount||!selection.isCollapsed||!editor.contains(selection.anchorNode))return;
+    const node=selection.anchorNode,offset=selection.anchorOffset;
+    if(node?.nodeType!==3)return;
+    const left=node.nodeValue.slice(0,offset);
+    const match=/([\p{L}][\p{L}\p{M}’'-]{2,})$/u.exec(left);
+    if(!match)return;
+    const word=match[1],lower=word.toLocaleLowerCase();
+    if(word===word.toLocaleUpperCase()||word.includes('@'))return;
+    const correction=autoFixPairs[lower];
+    if(!correction||correction.toLocaleLowerCase()===lower)return;
+    let result=correction;
+    if(word[0]===word[0].toUpperCase()&&word[0]!==word[0].toLowerCase())
+      result=correction[0].toLocaleUpperCase()+correction.slice(1);
+    e.preventDefault();
+    const range=document.createRange();
+    range.setStart(node,offset-word.length);
+    range.setEnd(node,offset);
+    selection.removeAllRanges();selection.addRange(range);
+    // execCommand preserves native undo history in Chromium and Safari.
+    const done=document.execCommand('insertText',false,result+' ');
+    if(!done){
+      range.deleteContents();
+      const inserted=document.createTextNode(result+' ');
+      range.insertNode(inserted);
+      range.setStartAfter(inserted);range.collapse(true);
+      selection.removeAllRanges();selection.addRange(range);
+    }
+    onEditorInput();
+    showToast(word+' → '+result+' · Ctrl+Z to undo');
   }
   function findPointWord(event,editor){
     const selected=window.getSelection();
@@ -575,19 +736,24 @@
     {ico:'check',label:'Spelling & suggestions',action:'spellcheck-help'},
     {ico:'search',label:'Find in this note',action:'find-note'}
   ];
-  function selectFolder(folder){filter='folder:'+folder;search='';$('search').value='';renderSidebar();closePanels();}
+  function selectFolder(folder){openFolder(folder);}
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||newName==='Inbox'||state.folders.includes(newName)){showToast('Choose a unique folder name');return;}
     state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
-    persist();renderAll();showToast('Folder renamed');
+    tabs=tabs.map(id=>id===folderKey(old)?folderKey(newName):id);
+    if(activeTab===folderKey(old))activeTab=folderKey(newName);
+    if(lastClosedTab===folderKey(old))lastClosedTab=folderKey(newName);
+    if(collapsedGroups.delete(old))collapsedGroups.add(newName);
+    if(showAllGroups.delete(old))showAllGroups.add(newName);
+    persist();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
     state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
-    if(filter==='folder:'+folder)filter='inbox';persist();renderAll();showToast('Notes moved to Inbox');
+    if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Inbox');
   }
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
@@ -595,12 +761,33 @@
     if(action.startsWith('spell-apply-')){applyCorrection(context,Number(action.slice(12)));return;}
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
+      case 'open-trash':setFilter('trash');break;
+      case 'empty-trash':{
+        const pending=state.notes.filter(item=>item.deleted&&!item.purged);
+        if(!pending.length){showToast('Trash is already empty');break;}
+        const ok=await confirmAction('Empty Trash?','Permanently delete '+pending.length+' notes? You cannot undo this. Consider exporting a backup first.');
+        if(!ok)break;
+        const now=stamp();
+        pending.forEach(item=>{item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.starred=false;item.archived=false;item.updatedAt=now;});
+        const removed=new Set(pending.map(item=>item.id));
+        tabs=tabs.filter(id=>!removed.has(id));
+        if(removed.has(selected))selected=visible()[0]?.id||null;
+        if(removed.has(activeTab))activeTab=tabs.at(-1)||selected;
+        persist();saveUi();renderAll();showToast(pending.length+' notes permanently deleted');
+      }break;
       case 'new-note':newNote();break;
       case 'new-folder':$('new-folder').click();break;
+      case 'active-folder-new':if(isFolderTab(activeTab))newNote(activeTab.slice(7));break;
+      case 'active-folder-rename':if(isFolderTab(activeTab)){
+        const old=activeTab.slice(7);
+        if(old==='Inbox'){showToast('Inbox cannot be renamed');break;}
+        const name=await ask('Rename folder','Folder name',old);
+        if(name!==null)folderRename(old,name.trim());
+      }break;
       case 'settings':settingsOpen();break;
-      case 'close-tab':if(selected)closeTab(selected);break;
-      case 'close-other-tabs':if(selected){tabs=[selected];saveUi();noteTabs();}break;
-      case 'restore-tab':if(lastClosedTab&&findNote(lastClosedTab)){openNote(lastClosedTab);lastClosedTab=null;saveUi();}break;
+      case 'close-tab':if(activeTab)closeTab(activeTab);break;
+      case 'close-other-tabs':if(activeTab){tabs=[activeTab];saveUi();noteTabs();}break;
+      case 'restore-tab':if(lastClosedTab&&tabExists(lastClosedTab)){openTab(lastClosedTab);lastClosedTab=null;saveUi();}break;
       case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
@@ -611,10 +798,12 @@
       case 'delete-note':if(n){
         if(n.deleted){
           if(!await confirmAction('Permanently delete?','This note cannot be restored.'))return;
-          state.notes=state.notes.filter(x=>x.id!==n.id);tabs=tabs.filter(id=>id!==n.id);
-        }else{n.deleted=true;n.updatedAt=stamp();tabs=tabs.filter(id=>id!==n.id);}
+          n.purged=true;n.deleted=true;n.html='';n.title='Deleted note';n.updatedAt=stamp();
+        }else{n.deleted=true;n.updatedAt=stamp();}
+        tabs=tabs.filter(id=>id!==n.id);
         if(selected===n.id)selected=visible()[0]?.id||null;
-        if(selected&&!tabs.includes(selected))tabs.push(selected);
+        if(activeTab===n.id)activeTab=tabs.at(-1)||selected;
+        if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
         persist();saveUi();renderAll();showToast('Note removed');
       }break;
       case 'export-note':if(n)exportNote(n);break;
@@ -858,15 +1047,32 @@
     $('quick-links').addEventListener('click',e=>{
       const b=e.target.closest('[data-filter]');if(b)setFilter(b.dataset.filter);
     });
-    $('folder-list').addEventListener('click',e=>{
+    $('folder-list').addEventListener('click',async e=>{
       if(Date.now()<skipClickUntil)return;
-      const b=e.target.closest('[data-folder]');if(b)selectFolder(b.dataset.folder);
+      const rename=e.target.closest('[data-rename-folder]');
+      if(rename){
+        const folder=rename.dataset.renameFolder;
+        const result=await ask('Rename folder','Folder name',folder);
+        if(result!==null)folderRename(folder,result.trim());return;
+      }
+      const b=e.target.closest('[data-folder]');if(b)openFolder(b.dataset.folder);
+    });
+    $('folder-view').addEventListener('click',e=>{
+      const card=e.target.closest('[data-folder-note]');
+      if(card){openNote(card.dataset.folderNote);return;}
+      const add=e.target.closest('[data-new-in-folder]');
+      if(add)newNote(add.dataset.newInFolder);
     });
     $('note-list').addEventListener('click',e=>{
       if(Date.now()<skipClickUntil)return;
       const group=e.target.closest('[data-group-toggle]');
       if(group){const name=group.dataset.groupToggle;
         if(collapsedGroups.has(name))collapsedGroups.delete(name);else collapsedGroups.add(name);
+        saveUi();renderSidebar();return;
+      }
+      const showAll=e.target.closest('[data-show-group]');
+      if(showAll){const folder=showAll.dataset.showGroup;
+        if(showAllGroups.has(folder))showAllGroups.delete(folder);else showAllGroups.add(folder);
         saveUi();renderSidebar();return;
       }
       const expand=e.target.closest('[data-expand-note]');
@@ -881,7 +1087,7 @@
     });
     $('open-tabs').addEventListener('click',e=>{
       const close=e.target.closest('[data-close-tab]');if(close){closeTab(close.dataset.closeTab);return;}
-      const tab=e.target.closest('[data-tab]');if(tab)openNote(tab.dataset.tab);
+      const tab=e.target.closest('[data-tab]');if(tab)openTab(tab.dataset.tab);
     });
     // A custom in-app context menu replaces the browser menu throughout the workspace.
     // Shift + right-click remains available for native browser spelling suggestions.
@@ -890,12 +1096,16 @@
       if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
-      const folder=e.target.closest('[data-folder]');
+      const folder=e.target.closest('[data-folder],[data-rename-folder]');
+      const trash=e.target.closest('[data-filter="trash"]');
       const editor=e.target.closest('#rich-editor,#note-title');
-      const note=editor?null:e.target.closest('[data-note-id],[data-tab]');
-      if(folder){showMenu(e.clientX,e.clientY,folderOptions(folder.dataset.folder),{folder:folder.dataset.folder});return;}
-      if(note){const id=note.dataset.noteId||note.dataset.tab,n=findNote(id);
-        if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
+      const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
+      if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
+      if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder;
+        showMenu(e.clientX,e.clientY,folderOptions(name),{folder:name});return;}
+      if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote;
+        if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
+        const n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
       if(editor){
         const input=editor.id==='note-title',start=input?editor.selectionStart:null,end=input?editor.selectionEnd:null;
         if(!input)saveSelection();
@@ -910,14 +1120,16 @@
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab]');
+      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"]');
       if(!target)return;
       clearTimeout(longTimer);
       longTimer=setTimeout(()=>{
-        if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
+        if(target.dataset.filter==='trash')showMenu(e.clientX,e.clientY,trashOptions(),{});
+        else if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
         else if(target.dataset.noteId||target.dataset.tab){
           const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
-          if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
+          if(isFolderTab(id))showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});
+          else if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
         }
         skipClickUntil=Date.now()+650;navigator.vibrate?.(12);
       },520);
@@ -934,6 +1146,7 @@
   }
   function bindRichText(){
     const editor=$('rich-editor');
+    editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
     editor.addEventListener('input',onEditorInput);
     editor.addEventListener('focus',()=>{isEditing=true;document.body.classList.add('editing');});
     editor.addEventListener('blur',()=>{isEditing=false;document.body.classList.remove('editing');commitEditor();});
@@ -1027,6 +1240,7 @@
     $('writing-font').addEventListener('change',e=>{writingFont=fontChoices.includes(e.target.value)?e.target.value:'system';localStorage.setItem(FONT,writingFont);applyTheme();showToast('Font updated');});
     $('font-size-down').addEventListener('click',()=>changeFontSize(-1));
     $('font-size-up').addEventListener('click',()=>changeFontSize(1));
+    $('auto-correct').addEventListener('change',e=>{autoCorrect=e.target.checked;localStorage.setItem(AUTOCORRECT,autoCorrect?'on':'off');showToast(autoCorrect?'Auto-correct on':'Auto-correct off');});
     $('cloud-button').addEventListener('click',settingsOpen);
     $('sidebar-cloud').addEventListener('click',settingsOpen);
     $('settings-close').addEventListener('click',()=>$('settings-modal').close());
