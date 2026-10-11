@@ -34,6 +34,7 @@
     function walk(node){
       if(node.nodeType===3)return esc(node.nodeValue);
       if(node.nodeType!==1)return '';
+      if(node.hasAttribute('data-asset-controls'))return '';
       if(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','FORM','SVG','MATH','TEMPLATE','LINK','META','BUTTON','INPUT'].includes(node.tagName))return '';
       const children=Array.from(node.childNodes).map(walk).join('');
       if(!allowed.has(node.tagName))return children;
@@ -378,7 +379,8 @@
     const pinnedRoots=sortedPins.filter(f=>pinSet.has(f)&&!pinSet.has(parent(f)));
     $('folder-list').innerHTML=pinnedRoots.map(f=>renderPinned(f)).join('');
     const quick=[['all','All Notes','file',live.length],['star','Starred','star',live.filter(n=>n.starred).length]];
-    $('trash-count').textContent=state.notes.filter(n=>n.deleted&&!n.purged).length||'';
+    const trashFolders=state.folders.filter(f=>state.folderTrash?.[f]?.deleted&&!state.folderTrash?.[f]?.purged);
+    $('trash-count').textContent=(state.notes.filter(n=>n.deleted&&!n.purged).length+trashFolders.length)||'';
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
     // Keep the Notes tree complete while navigating folder tabs or All Notes.
@@ -412,7 +414,9 @@
            children.map(c=>renderGroup(c,depth+1,visited)).join('')+'</div>')+
       '</section>';
     };
-    $('note-list').innerHTML=filter==='trash'?'<div class="trash-list-heading">Trash · '+notes.length+'</div>'+notes.map(renderNote).join(''):renderGroup('Inbox');
+    $('note-list').innerHTML=filter==='trash'?'<div class="trash-list-heading">Trash · '+(notes.length+trashFolders.length)+'</div>'+
+      trashFolders.map(f=>'<button type="button" class="note-item" data-restore-folder="'+esc(f)+'">📁 '+esc(f)+' · Restore</button>').join('')+
+      notes.map(renderNote).join(''):renderGroup('Inbox');
   }
 
 
@@ -430,13 +434,15 @@
     if(isIosLayout())return;
     if(desktopFolder!=='all'&&desktopFolder!=='star'&&desktopFolder!=='trash'&&desktopFolder!=='Inbox'&&!state.folders.includes(desktopFolder))desktopFolder='all';
     const notes=desktopNotesFor(desktopFolder);
-    document.body.dataset.desktopEmpty=String(!notes.length);
+    const trashFolders=desktopFolder==='trash'?state.folders.filter(f=>state.folderTrash?.[f]?.deleted&&!state.folderTrash?.[f]?.purged):[];
+    document.body.dataset.desktopEmpty=String(!notes.length&&!trashFolders.length);
     $('desktop-folder-label').textContent=desktopFolder==='all'?'All Notes':desktopFolder==='star'?'Starred':desktopFolder==='trash'?'Trash':folderLabel(desktopFolder);
-    $('desktop-notes-items').innerHTML=notes.length?notes.map(n=>
+    $('desktop-notes-items').innerHTML=trashFolders.map(f=>'<button class="desktop-note-card" data-restore-folder="'+esc(f)+'"><strong>📁 '+esc(f)+'</strong><span class="desktop-note-meta">Tap to restore folder</span></button>').join('')+
+      (notes.length?notes.map(n=>
       '<button type="button" class="desktop-note-card '+(selected===n.id&&!isFolderTab(activeTab)?'selected':'')+'" data-desktop-note="'+esc(n.id)+'">'+
        '<strong dir="auto">'+esc(n.title||'Untitled')+'</strong>'+
        '<span class="desktop-note-meta"><time>'+esc(timeAgo(n.updatedAt))+'</time><span dir="auto">'+esc(iosNotePreview(n))+'</span></span>'+
-      '</button>').join(''):'';
+      '</button>').join(''):'');
   }
   function selectDesktopFolder(folder){
     if(isIosLayout())return;
@@ -534,13 +540,15 @@
       const d=new Date(date||Date.now());
       return Number.isNaN(d.getTime())?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
     };
-    $('ios-notes-groups').innerHTML=notes.length?[...sections].map(([label,items])=>
+    const trashFolders=folder==='trash'?state.folders.filter(f=>state.folderTrash?.[f]?.deleted&&!state.folderTrash?.[f]?.purged):[];
+    $('ios-notes-groups').innerHTML=(trashFolders.length?'<div class="ios-note-card">'+trashFolders.map(f=>
+      '<button type="button" class="ios-note-row" data-restore-folder="'+esc(f)+'"><strong>📁 '+esc(f)+'</strong><span class="ios-note-details">Tap to restore folder</span></button>').join('')+'</div>':'')+
+      (notes.length?[...sections].map(([label,items])=>
       '<section class="ios-date-section"><h2>'+label+'</h2><div class="ios-note-card">'+items.map(n=>
         '<button type="button" class="ios-note-row" data-ios-note="'+esc(n.id)+'">'+
         '<strong dir="auto">'+esc(n.title||'Untitled')+'</strong>'+
         '<span class="ios-note-details"><time>'+dateLabel(n.updatedAt)+'</time><span dir="auto">'+esc(iosNotePreview(n))+'</span></span></button>').join('')+
-      '</div></section>').join(''):
-      '';
+      '</div></section>').join(''):'');
   }
   function iosGoToFolder(folder){
     if(folder==='all'||folder==='star'||folder==='trash'){
@@ -1829,6 +1837,7 @@
     });
     $('note-list').addEventListener('click',e=>{
       if(Date.now()<skipClickUntil)return;
+      const restore=e.target.closest('[data-restore-folder]');if(restore){runAction('folder-restore',{folder:restore.dataset.restoreFolder});return;}
       const group=e.target.closest('[data-group-toggle]');
       if(group){const name=group.dataset.groupToggle;
         if(!isIosLayout()&&!e.target.closest('svg')){selectDesktopFolder(name);return;}
@@ -2020,7 +2029,10 @@
 
   function bindDesktopNavigation(){
     $('desktop-note-search').addEventListener('input',e=>{desktopSearch=e.target.value;renderDesktopNotes();});
-    $('desktop-notes-items').addEventListener('click',e=>{const card=e.target.closest('[data-desktop-note]');if(card)openNote(card.dataset.desktopNote);});
+    $('desktop-notes-items').addEventListener('click',e=>{
+      const restore=e.target.closest('[data-restore-folder]');if(restore){runAction('folder-restore',{folder:restore.dataset.restoreFolder});return;}
+      const card=e.target.closest('[data-desktop-note]');if(card)openNote(card.dataset.desktopNote);
+    });
     $('desktop-compose').addEventListener('click',()=>newNote('Inbox'));
     $('desktop-new-folder').addEventListener('click',()=>$('new-folder').click());
   }
@@ -2054,6 +2066,7 @@
     $('ios-folder-groups').addEventListener('click',openHandler);
     $('ios-pinned-section').addEventListener('click',openHandler);
     $('ios-notes-groups').addEventListener('click',e=>{
+      const restore=e.target.closest('[data-restore-folder]');if(restore){runAction('folder-restore',{folder:restore.dataset.restoreFolder});return;}
       const button=e.target.closest('[data-ios-note]');if(button)openNote(button.dataset.iosNote);
     });
     $('ios-add-folder').addEventListener('click',()=>$('new-folder').click());
