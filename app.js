@@ -10,7 +10,7 @@
   const SWAP_DELAY=1450;
   const seeded=()=>({
     version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
-    folders:['Personal','Work','Ideas','Writing','Design','Reading','Life'],
+    folders:[],
     notes:[
       {id:'welcome',title:'A calmer mind',folder:'Life',html:'<h2>Thoughts on a simpler life</h2><p>Lately I’ve been thinking a lot about how much calmer life feels when things are simple. Not easier, but simpler. Fewer tabs, fewer commitments, fewer things fighting for my attention.</p><p>It’s not about doing less, but about making space for what actually matters.</p><ul><li>More time for deep work</li><li>A cleaner headspace</li><li>People who feel like home</li><li>A life that feels intentional</li></ul><blockquote>Simplicity is not the absence of things, but the presence of what matters.</blockquote><h2>Related</h2><p>Keep the ideas connected: <a data-note-id="habits">Habits</a> · <a data-note-id="focus">Focus</a> · <a data-note-id="morning">A better morning</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
       {id:'habits',title:'Habits',folder:'Life',html:'<h2>Small things, often</h2><p>Good habits create space for a calmer mind.</p><ul><li>Read every day</li><li>Move my body</li><li>Protect the morning</li></ul><p><a data-note-id="welcome">A calmer mind</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
@@ -49,6 +49,7 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
+      if(['p','h1','h2','div'].includes(t)&&node.getAttribute('data-note-title')==='1')attrs+=' data-note-title="1"';
       if(t==='span'||t==='font'){
         const ink=safePaint(node.style?.color||node.getAttribute('color'),textColors);
         const mark=safePaint(node.style?.backgroundColor||node.getAttribute('bgcolor'),markerColors);
@@ -119,6 +120,9 @@
   let collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]);
   let expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
+  // Pinned navigation is separate from the persisted notes and folder catalog.
+  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
+  let draggingFolder=null;
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
   const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
@@ -139,7 +143,7 @@
   const plain=html=>{const d=document.createElement('div');d.innerHTML=safeHtml(html);return d.innerText||d.textContent||'';};
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
-  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],lastClosedTab}));}
+  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,lastClosedTab}));}
   function persist(remote=true){
     pristine=false;
     state.updatedAt=stamp();
@@ -210,7 +214,7 @@
     commitEditor();
     const n={id:uuid(),title:'Untitled',folder,html:'',updatedAt:stamp(),starred:false,archived:false,deleted:false};
     state.notes.push(n);selected=n.id;activeTab=n.id;if(!tabs.includes(n.id))tabs.push(n.id);filter='all';search='';$('search').value='';
-    persist();saveUi();renderAll();closePanels();$('note-title').focus();$('note-title').select();
+    persist();saveUi();renderAll();closePanels();focusNoteHeading();
   }
   function touchNote(n){n.updatedAt=stamp();persist();renderSidebar();noteTabs();updateSummary();}
   function closePanels(){
@@ -222,7 +226,8 @@
     if(searchFocus)setTimeout(()=>$('search').focus(),60);
   }
   function renderSidebar(){
-    const folders=state.folders,live=visible();
+    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
+    const folders=pinnedFolders,live=visible();
     const quick=[['inbox','Notes','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
@@ -230,7 +235,7 @@
       ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'"><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
+    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'" data-drag-folder="'+esc(f)+'" draggable="true" title="Drag to reorder"><span class="folder-drag-handle" aria-hidden="true">⠿</span><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
@@ -250,7 +255,7 @@
     const groupMap=new Map();
     for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
     const ordered=[...groupMap.entries()].sort((a,b)=>{
-      const ai=['Inbox',...folders].indexOf(a[0]),bi=['Inbox',...folders].indexOf(b[0]);
+      const ai=['Inbox',...pinnedFolders,...state.folders].indexOf(a[0]),bi=['Inbox',...pinnedFolders,...state.folders].indexOf(b[0]);
       return (ai<0?999:ai)-(bi<0?999:bi);
     });
     $('note-list').innerHTML=ordered.length?ordered.map(([folder,items])=>{
@@ -266,7 +271,6 @@
     const text=plain(n.html).trim(),words=text?text.split(/\s+/u).length:0;
     $('word-count').textContent=words.toLocaleString()+' words';
     $('character-count').textContent=text.length.toLocaleString()+' characters';
-    $('note-updated').textContent='Edited '+timeAgo(n.updatedAt);
   }
   function renderFolderView(folder){
     const all=visible().filter(n=>n.folder===folder).sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
@@ -277,6 +281,49 @@
       (titled.length?'<div class="folder-view-list">'+titled.map(card).join('')+'</div>':'')+
       (drafts.length?'<details class="folder-drafts"><summary>'+icon('chevron')+' Untitled drafts <span>'+drafts.length+'</span></summary><div class="folder-view-list">'+drafts.map(card).join('')+'</div></details>':'')+
       (!all.length?'<div class="folder-empty">This folder is empty. Create a note to get started.</div>':'');
+  }
+
+  function editorMarkup(n){
+    if(!n)return '';
+    const markup=safeHtml(n.html||''),container=document.createElement('div');
+    container.innerHTML=markup;
+    const first=container.firstElementChild,title=(n.title||'').trim();
+    if(first?.getAttribute('data-note-title')==='1')return markup;
+    if(title&&title!=='Untitled'){
+      if(first&&['H1','H2','P','DIV'].includes(first.tagName)&&first.textContent.trim()===title){
+        first.setAttribute('data-note-title','1');return container.innerHTML;
+      }
+      return '<h1 data-note-title="1">'+esc(title)+'</h1>'+markup;
+    }
+    if(first&&['H1','H2','P','DIV'].includes(first.tagName)){
+      first.setAttribute('data-note-title','1');return container.innerHTML;
+    }
+    return '<h1 data-note-title="1"><br></h1>'+markup;
+  }
+  function editorFirstLine(){
+    const editor=$('rich-editor'),first=editor.firstElementChild;
+    const content=first?(first.innerText||first.textContent||''):(editor.innerText||'').split('\n')[0];
+    return String(content).split(/\r?\n/u)[0].replace(/[\u00a0\u200b\u200c\u200d]/gu,' ').trim().slice(0,120)||'Untitled';
+  }
+  function syncEditorHeading(){
+    const editor=$('rich-editor'),first=editor.firstElementChild;
+    if(first&&['H1','H2','P','DIV'].includes(first.tagName))first.dataset.noteTitle='1';
+    const n=current();if(!n)return;
+    const name=editorFirstLine();
+    if(n.title!==name){
+      n.title=name;noteTabs();
+      $('mobile-title').innerHTML=esc(name)+' '+icon('chevron');
+    }
+  }
+  function focusNoteHeading(select=false){
+    const editor=$('rich-editor'),heading=editor.querySelector('[data-note-title="1"]')||editor.firstElementChild;
+    editor.focus({preventScroll:true});
+    if(!heading)return;
+    const selection=window.getSelection(),range=document.createRange();
+    range.selectNodeContents(heading);range.collapse(false);
+    selection.removeAllRanges();selection.addRange(range);
+    if(select&&heading.textContent.trim()){range.selectNodeContents(heading);selection.removeAllRanges();selection.addRange(range);}
+    saveSelection();
   }
   function renderEditor(){
     const isFolder=isFolderTab(activeTab);
@@ -291,10 +338,9 @@
     $('note-title').disabled=!n;
     $('rich-editor').contentEditable=n?'true':'false';
     $('note-title').value=n?.title||'';
-    $('rich-editor').innerHTML=n?.html||'';
+    $('rich-editor').innerHTML=editorMarkup(n);
     $('mobile-title').innerHTML=esc(n?.title||'All notes')+' '+icon('chevron');
     $('breadcrumb').innerHTML=n?esc(folderLabel(n.folder))+' <span> / </span> '+esc(n.title):'Your notes';
-    $('editor-eyebrow').textContent=n?('YOUR NOTES  —  '+folderLabel(n.folder).toUpperCase()):'YOUR WORKSPACE';
     updateSummary();
     $('editor-scroll').scrollTop=0;
   }
@@ -310,11 +356,13 @@
   }
   function commitEditor(){
     const n=current();if(!n)return;
+    syncEditorHeading();
     const html=safeHtml($('rich-editor').innerHTML);
     if(n.html!==html){n.html=html;n.updatedAt=stamp();persist();}
   }
   function onEditorInput(){
     const n=current();if(!n)return;
+    syncEditorHeading();
     n.html=safeHtml($('rich-editor').innerHTML);
     n.updatedAt=stamp();persist();updateSummary();
     // Keep the editor and cursor completely untouched while typing.
@@ -355,6 +403,27 @@
     checkbox.setAttribute('aria-checked',String(next==='1'));
     checkbox.textContent=next==='1'?'☑':'☐';
     onEditorInput();
+  }
+  function headingEnter(event){
+    if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.metaKey||event.isComposing)return false;
+    const selection=window.getSelection();
+    if(!selection?.rangeCount||!selection.isCollapsed)return false;
+    const anchor=selection.anchorNode;
+    const node=anchor?.nodeType===1?anchor:anchor?.parentElement;
+    const heading=node?.closest('[data-note-title="1"]');
+    if(!heading||heading!==$('rich-editor').firstElementChild)return false;
+    event.preventDefault();
+    const tail=selection.getRangeAt(0).cloneRange();
+    tail.setEnd(heading,heading.childNodes.length);
+    const rest=tail.extractContents(),line=document.createElement('p');
+    if(rest.hasChildNodes())line.appendChild(rest);
+    else line.appendChild(document.createElement('br'));
+    heading.after(line);
+    const caret=document.createRange();
+    caret.setStart(line,0);caret.collapse(true);
+    selection.removeAllRanges();selection.addRange(caret);
+    savedSelection=caret.cloneRange();
+    onEditorInput();return true;
   }
   function checklistEnter(event){
     if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.metaKey)return;
@@ -779,7 +848,7 @@
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||['inbox','notes'].includes(newName.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===newName.toLocaleLowerCase())){showToast('Choose a unique folder name');return;}
-    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();
+    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
     tabs=tabs.map(id=>id===folderKey(old)?folderKey(newName):id);
@@ -790,7 +859,7 @@
     persist();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
-    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();
+    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.filter(f=>f!==folder);
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
     if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Notes');
   }
@@ -827,7 +896,7 @@
       case 'close-tab':if(activeTab)closeTab(activeTab);break;
       case 'close-other-tabs':if(activeTab){tabs=[activeTab];saveUi();noteTabs();}break;
       case 'restore-tab':if(lastClosedTab&&tabExists(lastClosedTab)){openTab(lastClosedTab);lastClosedTab=null;saveUi();}break;
-      case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
+      case 'rename-note':if(n){openNote(n.id);focusNoteHeading(true);}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
       case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
@@ -1084,7 +1153,55 @@
     $('quick-links').addEventListener('click',e=>{
       const b=e.target.closest('[data-filter]');if(b){if(b.dataset.filter==='inbox')openFolder('Inbox');else setFilter(b.dataset.filter);}
     });
-    $('folder-list').addEventListener('click',async e=>{
+    const folderList=$('folder-list');
+    const clearDragHints=()=>{
+      folderList.querySelectorAll('.dragging,.drop-before,.drop-after').forEach(x=>x.classList.remove('dragging','drop-before','drop-after'));
+    };
+    folderList.addEventListener('dragstart',e=>{
+      const row=e.target.closest('[data-drag-folder]');
+      if(!row||e.target.closest('[data-rename-folder]')){e.preventDefault();return;}
+      draggingFolder=row.dataset.dragFolder;
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',draggingFolder);
+      requestAnimationFrame(()=>row.classList.add('dragging'));
+    });
+    folderList.addEventListener('dragover',e=>{
+      const target=e.target.closest('[data-drag-folder]');
+      if(!draggingFolder||!target||target.dataset.dragFolder===draggingFolder)return;
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      clearDragHints();
+      const before=e.clientY<target.getBoundingClientRect().top+target.offsetHeight/2;
+      target.classList.add(before?'drop-before':'drop-after');
+    });
+    folderList.addEventListener('drop',e=>{
+      const target=e.target.closest('[data-drag-folder]');
+      if(!draggingFolder||!target){clearDragHints();draggingFolder=null;return;}
+      e.preventDefault();
+      const moving=draggingFolder,destination=target.dataset.dragFolder;
+      const before=e.clientY<target.getBoundingClientRect().top+target.offsetHeight/2;
+      clearDragHints();draggingFolder=null;
+      if(moving===destination)return;
+      const next=pinnedFolders.filter(name=>name!==moving);
+      const at=next.indexOf(destination);
+      if(at<0)return;
+      const oldPositions=new Map([...folderList.querySelectorAll('[data-drag-folder]')]
+        .map(row=>[row.dataset.dragFolder,row.getBoundingClientRect().top]));
+      next.splice(at+(before?0:1),0,moving);
+      pinnedFolders=next;saveUi();renderSidebar();
+      if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+        folderList.querySelectorAll('[data-drag-folder]').forEach(row=>{
+          const old=oldPositions.get(row.dataset.dragFolder);
+          if(old===undefined)return;
+          const delta=old-row.getBoundingClientRect().top;
+          if(Math.abs(delta)>1)row.animate?.([
+            {transform:'translateY('+delta+'px)'},{transform:'translateY(0)'}
+          ],{duration:255,easing:'cubic-bezier(.2,.75,.25,1)'});
+        });
+      }
+      showToast('Folder order saved');
+    });
+    folderList.addEventListener('dragend',()=>{draggingFolder=null;clearDragHints();});
+    folderList.addEventListener('click',async e=>{
       if(Date.now()<skipClickUntil)return;
       const rename=e.target.closest('[data-rename-folder]');
       if(rename){
@@ -1206,6 +1323,7 @@
         if(e.key===' '||e.key==='Enter'){e.preventDefault();toggleCheckbox(e.target.closest('[data-checkbox]'));}
         return;
       }
+      if(headingEnter(e))return;
       checklistEnter(e);
     });
     editor.addEventListener('click',e=>{
@@ -1265,11 +1383,16 @@
       const name=await ask('New folder','Folder name');
       if(!name?.trim())return;
       const f=name.trim().slice(0,90);
-      if(['notes','inbox'].includes(f.toLocaleLowerCase())||state.folders.some(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase())){showToast('That folder already exists');return;}
-      state.folders.push(f);state.foldersUpdatedAt=stamp();persist();selectFolder(f);
+      if(['notes','inbox'].includes(f.toLocaleLowerCase())){showToast('Notes is the default folder');return;}
+      const existing=state.folders.find(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase());
+      if(existing){
+        if(!pinnedFolders.includes(existing)){pinnedFolders.push(existing);saveUi();renderSidebar();showToast('Folder added to Pinned');}
+        else showToast('Folder already pinned');
+        openFolder(existing);return;
+      }
+      state.folders.push(f);state.foldersUpdatedAt=stamp();pinnedFolders.push(f);persist();saveUi();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
-    $('note-title').addEventListener('input',onTitleInput);
     $('open-sidebar').addEventListener('click',()=>openSidebar());
     $('mobile-title').addEventListener('click',()=>openSidebar());
     $('close-sidebar').addEventListener('click',closePanels);
@@ -1278,8 +1401,6 @@
       const r=$('more-button').getBoundingClientRect();
       showMenu(r.right-240,r.bottom+7,appOptions(),{id:selected});
     });
-    $('rail-notes').addEventListener('click',()=>{setFilter('all');openSidebar();});
-    $('rail-star').addEventListener('click',()=>{setFilter('star');openSidebar();});
     document.querySelectorAll('[data-mobile]').forEach(b=>b.addEventListener('click',()=>{
       const action=b.dataset.mobile;
       if(action==='notes')openSidebar();

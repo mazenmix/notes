@@ -680,3 +680,76 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .paint-swatch{height:33px}
 }
 @media(prefers-reduced-motion:reduce){.paint-popover{animation:none}}
+
+
+/* Apple Notes-inspired distraction-free workspace */
+.app-shell,body.panel-hidden .app-shell{grid-template-columns:260px minmax(0,1fr)}
+.sidebar{min-width:0}
+@media(min-width:761px){
+  .sidebar-head{display:none}
+  .sidebar .search-wrap{margin-top:16px}
+}
+.editor-content,body.focus-mode .editor-content{padding-top:25px}
+.editor-eyebrow,.under-title,.note-title-input,.desktop-breadcrumb{display:none!important}
+.rich-editor{margin-top:0!important;padding-top:0;min-height:64vh}
+.rich-editor[data-placeholder]:empty::before{content:none}
+.rich-editor [data-note-title="1"]{
+  margin:0 0 20px;min-height:1.42em;
+  color:#f0f3f6;font-family:var(--writing-font);font-weight:650;
+  font-size:clamp(24px,2.25vw,32px);line-height:1.45;
+  letter-spacing:-.024em;overflow-wrap:anywhere;
+}
+.rich-editor [data-note-title="1"]:first-child{margin-top:0}
+.rich-editor [data-note-title="1"]:empty::after{content:""}
+.rich-editor [data-note-title="1"] + p{margin-top:0}
+.rich-editor [data-note-title="1"] + div{margin-top:0}
+[data-theme="light"] .rich-editor [data-note-title="1"]{color:#1f3244}
+.open-tabs{scrollbar-width:none!important;-ms-overflow-style:none;overflow-y:hidden!important}
+.open-tabs::-webkit-scrollbar,.desktop-tabbar::-webkit-scrollbar,.tabbar::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
+.desktop-tabbar{overflow:hidden}
+.pinned-folder-row{position:relative;cursor:grab;transition:background-color .17s,opacity .17s,transform .18s}
+.pinned-folder-row:active{cursor:grabbing}
+.pinned-folder-row.dragging{opacity:.42;transform:scale(.98);background:#263646}
+.pinned-folder-row.drop-before::before,.pinned-folder-row.drop-after::after{
+  content:"";position:absolute;z-index:3;left:9px;right:9px;
+  height:3px;border-radius:5px;background:#8bb9e2;
+  box-shadow:0 0 0 2px #53718e44,0 0 12px #53718e66
+}
+.pinned-folder-row.drop-before::before{top:-3px}
+.pinned-folder-row.drop-after::after{bottom:-3px}
+.folder-drag-handle{
+  width:21px;flex:0 0 21px;font-size:17px;line-height:1;
+  user-select:none;display:grid;place-items:center;color:#718394;
+  opacity:.3;transition:opacity .18s,color .18s;cursor:grab
+}
+.pinned-folder-row:hover .folder-drag-handle,.pinned-folder-row:focus-within .folder-drag-handle{opacity:1;color:#b8cee0}
+.pinned-folder-row .folder-item{padding-inline-start:3px}
+.folder-rename-btn{cursor:pointer}
+#folder-list:empty::after{content:"";display:block;height:4px}
+.paint-button{
+  position:relative;width:38px;min-width:38px;height:36px;
+  border:1px solid transparent;border-radius:10px;background:transparent;
+  transition:background-color .15s,border-color .15s,transform .15s;
+}
+.paint-button:hover,.paint-button[aria-expanded="true"]{
+  background:linear-gradient(145deg,#2c3742,#202833);border-color:#4f6275;
+}
+.paint-button:active{transform:scale(.95)}
+.paint-ink .paint-letter{font:750 17px/17px var(--sans);letter-spacing:-1px;color:#e9edf4}
+.paint-marker svg{width:21px;height:21px;color:#e2d7ac}
+.paint-underline{height:3px;width:23px;background:linear-gradient(90deg,#ef8497,#e4b45b,#6fcc9f,#7babf1,#bb85dc);border-radius:6px}
+.marker-underline{height:4px;width:23px;border-radius:6px;background:linear-gradient(90deg,#efdb6c,#d9b45c)}
+.paint-button .paint-underline,.paint-button .marker-underline{box-shadow:0 1px 5px #0008}
+[data-theme="light"] .paint-ink .paint-letter{color:#2f455c}
+[data-theme="light"] .paint-marker svg{color:#725c24}
+[data-theme="light"] .paint-button:hover,[data-theme="light"] .paint-button[aria-expanded="true"]{background:#e4edf4;border-color:#a9c3d6}
+@media(max-width:1200px) and (min-width:761px){.app-shell,body.panel-hidden .app-shell{grid-template-columns:240px minmax(0,1fr)}}
+@media(max-width:1010px) and (min-width:761px){.app-shell,body.panel-hidden .app-shell{grid-template-columns:245px minmax(0,1fr)}}
+@media(max-width:760px){
+  .app-shell,body.panel-hidden .app-shell{display:block;grid-template-columns:none}
+  .sidebar-head{min-height:48px;justify-content:flex-end}
+  .rich-editor{min-height:calc(100dvh - 215px);margin-top:0!important}
+  .editor-content,body.focus-mode .editor-content{padding-top:19px}
+  .rich-editor [data-note-title="1"]{font-size:clamp(23px,6vw,30px);margin-bottom:15px}
+  .folder-drag-handle{opacity:.7}
+}
