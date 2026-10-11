@@ -1,4 +1,4 @@
-name: Deploy MX Notes
+name: MX Notes quality checks
 
 on:
   push:
@@ -7,36 +7,32 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: github-pages
-  cancel-in-progress: true
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
-      - name: Validate JavaScript
+      - name: Validate client JavaScript
         run: node --check app.js
-      - name: Prepare publish files
+      - name: Validate Cloudflare modules
         run: |
-          mkdir -p dist
-          cp index.html styles.css app.js favicon.svg manifest.webmanifest dist/
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - name: Upload site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+          node --check --input-type=module < functions/api/session.js
+          node --check --input-type=module < functions/api/vault.js
+          node --check --input-type=module < functions/_lib/owner.js
+      - name: Verify page wiring
+        run: |
+          python3 - <<'PY'
+          import re
+          html=open('index.html',encoding='utf-8').read()
+          app=open('app.js',encoding='utf-8').read()
+          ids=set(re.findall(r'\bid="([^"]+)"',html))
+          refs=set(re.findall(r"\$\('([^']+)'\)",app))
+          missing=refs-ids
+          assert not missing, f'Missing HTML elements for JS IDs: {sorted(missing)}'
+          assert 'id="note-tags"' not in html, 'Tags UI must be removed'
+          assert 'id="open-tabs"' in html and 'id="rich-editor"' in html
+          assert 'supabase' not in app.lower(), 'Supabase remains in client code'
+          print('MX Notes UI wiring looks consistent')
+          PY
