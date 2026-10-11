@@ -34,7 +34,7 @@
     function walk(node){
       if(node.nodeType===3)return esc(node.nodeValue);
       if(node.nodeType!==1)return '';
-      if(node.hasAttribute('data-asset-controls')||node.hasAttribute('data-code-controls'))return '';
+      if(node.hasAttribute('data-asset-controls')||node.hasAttribute('data-code-controls')||node.hasAttribute('data-resize-handle'))return '';
       if(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','FORM','SVG','MATH','TEMPLATE','LINK','META','BUTTON','INPUT'].includes(node.tagName))return '';
       const children=Array.from(node.childNodes).map(walk).join('');
       if(!allowed.has(node.tagName))return children;
@@ -55,12 +55,13 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
+      if(t==='div'&&node.getAttribute('data-asset-gallery')==='1')attrs=' data-asset-gallery="1"';
       if(t==='figure'){
         const id=node.getAttribute('data-asset-id');
         if(!/^[a-f0-9-]{36}$/i.test(id||''))return '';
         const name=(node.getAttribute('data-name')||'attachment').slice(0,180);
         const mime=(node.getAttribute('data-mime')||'application/octet-stream').slice(0,100);
-        const width=Math.max(160,Math.min(900,parseInt(node.getAttribute('data-width'),10)||240));
+        const width=Math.max(120,Math.min(900,parseInt(node.getAttribute('data-width'),10)||240));
         const isImage=node.getAttribute('data-kind')==='image';
         attrs=' data-asset-id="'+esc(id)+'" data-name="'+esc(name)+'" data-mime="'+esc(mime)+
           '" data-kind="'+(isImage?'image':'file')+'" data-width="'+width+'" contenteditable="false"';
@@ -837,7 +838,7 @@
     const editor=$('rich-editor');
     for(const figure of editor.querySelectorAll('figure[data-asset-id]')){
       const id=figure.dataset.assetId,kind=figure.dataset.kind,width=Number(figure.dataset.width)||240;
-      figure.style.width=Math.min(900,Math.max(160,width))+'px';
+      figure.style.width=Math.min(900,Math.max(120,width))+'px';
       if(kind==='image'){
         if(!resizedFigures.has(figure)&&typeof ResizeObserver==='function'){
           resizedFigures.add(figure);
@@ -846,7 +847,7 @@
             if(!figure.isConnected){observer.disconnect();return;}
             const width=Math.round(entries[0]?.contentRect?.width||0);
             if(initial){initial=false;return;}
-            if(width>=160&&Math.abs((Number(figure.dataset.width)||440)-width)>4){
+            if(width>=120&&Math.abs((Number(figure.dataset.width)||240)-width)>4){
               figure.dataset.width=String(Math.min(900,width));
               clearTimeout(figure._saveWidthTimer);
               figure._saveWidthTimer=setTimeout(()=>onEditorInput(),300);
@@ -862,17 +863,26 @@
       if(!figure.querySelector('[data-asset-controls]')){
         const tools=document.createElement('div');tools.dataset.assetControls='true';
         tools.contentEditable='false';
-        tools.innerHTML='<button type="button" data-asset-action="remove" aria-label="Remove attachment" title="Remove attachment">×</button>';
+        tools.innerHTML='<button type="button" data-asset-action="remove" aria-label="Remove attachment" title="Remove image">×</button>';
         figure.append(tools);
+      }
+      if(kind==='image'&&!figure.querySelector('[data-resize-handle]')){
+        const grip=document.createElement('span');
+        grip.dataset.resizeHandle='true';grip.className='asset-resize-grip';
+        grip.contentEditable='false';grip.title='Drag corner to resize image';
+        grip.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 19l9-9M15 19l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+        figure.append(grip);
       }
     }
     for(const code of editor.querySelectorAll('pre[data-code-block]>code')){
       code.spellcheck=false;code.contentEditable='true';
       const pre=code.closest('pre[data-code-block]');
-      if(pre&&!pre.querySelector('[data-code-controls]')){
+      if(pre&&!pre.querySelector('[data-code-action="copy"]')){
+        pre.querySelector('[data-code-controls]')?.remove();
         const tools=document.createElement('div');tools.dataset.codeControls='true';
         tools.contentEditable='false';
-        tools.innerHTML='<button type="button" data-code-action="remove" aria-label="Remove code block" title="Remove code block">×</button>';
+        tools.innerHTML='<button type="button" data-code-action="copy" aria-label="Copy code" title="Copy code"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M16 18v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="copy-feedback">Copy</span></button>'+
+          '<button type="button" data-code-action="remove" aria-label="Remove code block" title="Remove code block"><span aria-hidden="true">×</span></button>';
         pre.append(tools);
       }
     }
@@ -911,17 +921,71 @@
     if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
     attachmentInsertion={noteId:note.id,range};
   }
-  function insertAttachmentAtSavedCaret(markup){
+  function imageGalleryAtCaret(range,editor){
+    if(!range)return null;
+    const node=range.startContainer;
+    const element=node.nodeType===1?node:node.parentElement;
+    if(!element||!editor.contains(element))return null;
+    const existing=element.closest?.('[data-asset-gallery="1"]');
+    if(existing)return existing;
+    let before=null;
+    if(node.nodeType===1&&range.startOffset>0){
+      before=node.childNodes[range.startOffset-1];
+      if(before?.nodeType===3)before=before.previousSibling;
+    }
+    if(before?.nodeType===1&&before.matches?.('p')&&!before.textContent.trim()){
+      before=before.previousElementSibling;
+    }
+    const block=element.closest?.('p,div,figure');
+    if(!before&&block&&block!==editor){
+      // A blank paragraph directly after a gallery means "add beside".
+      if(!block.textContent.trim())before=block.previousElementSibling;
+    }
+    // When selection ends exactly at a gallery boundary, the browser may
+    // place the caret in the editor root just after its empty trailing <p>.
+    if(!before&&element===editor&&range.startOffset>0){
+      const neighbor=editor.childNodes[range.startOffset-1];
+      before=neighbor?.nodeType===1&&neighbor.matches?.('p')&&!neighbor.textContent.trim()?
+        neighbor.previousElementSibling:neighbor;
+    }
+    if(before?.nodeType===1&&before.matches?.('[data-asset-gallery="1"]'))return before;
+    if(before?.nodeType===1&&before.matches?.('figure[data-kind="image"]')){
+      const gallery=document.createElement('div');
+      gallery.dataset.assetGallery='1';
+      before.parentNode.insertBefore(gallery,before);gallery.append(before);
+      return gallery;
+    }
+    return null;
+  }
+  function insertAttachmentAtSavedCaret(markup,isImage=false){
     const bookmark=attachmentInsertion,note=bookmark&&findNote(bookmark.noteId);
     if(!note||note.deleted||note.purged){showToast('Original note unavailable');return false;}
     // Never insert into another note if a tab was changed while uploading.
     if(current()?.id!==note.id){
-      note.html=safeHtml((note.html||'')+markup);
+      // Only append to the original note when its editor is no longer active.
+      note.html=safeHtml((note.html||'')+(isImage?'<div data-asset-gallery="1">'+markup.split('</figure>')[0]+'</figure></div><p><br></p>':markup));
       note.updatedAt=stamp();persist();renderSidebar();renderDesktopNotes();renderIos();
       return true;
     }
     const editor=$('rich-editor'),range=bookmark.range;
     editor.focus({preventScroll:true});
+    if(isImage&&range&&editor.contains(range.startContainer)){
+      const gallery=imageGalleryAtCaret(range,editor);
+      if(gallery){
+        const template=document.createElement('template');template.innerHTML=markup;
+        const figure=template.content.querySelector('figure[data-kind="image"]');
+        if(figure){
+          gallery.append(figure);
+          const end=document.createRange(),sel=window.getSelection();
+          end.setStartAfter(gallery);end.collapse(true);
+          sel.removeAllRanges();sel.addRange(end);
+          bookmark.range=end.cloneRange();
+          hydrateAssets();onEditorInput();saveSelection();
+          return true;
+        }
+      }
+    }
+    if(isImage)markup='<div data-asset-gallery="1">'+markup.split('</figure>')[0]+'</figure></div><p><br></p>';
     if(range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)){
       const sel=window.getSelection();
       sel.removeAllRanges();sel.addRange(range.cloneRange());
@@ -952,11 +1016,14 @@
         showToast('Uploading '+file.name+'…');
         const data=await uploadAttachment(file);
         const image=/^image\/(png|jpeg|webp|gif|avif)$/i.test(data.mime);
+        const available=$('rich-editor').clientWidth||window.innerWidth-32;
+        const imageWidth=image&&window.innerWidth<=760?
+          Math.max(120,Math.min(170,Math.floor((available-18)/2))):240;
         const figure='<figure data-asset-id="'+esc(data.id)+'" data-kind="'+(image?'image':'file')+
-          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="240" contenteditable="false">'+
+          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="'+imageWidth+'" contenteditable="false">'+
           (image?'<img data-asset-image="'+esc(data.id)+'" alt="Attached image">':'<span>📎 '+esc(data.name)+'</span>')+
           (image?'':'<figcaption>'+esc(data.name)+'</figcaption>')+'</figure><p><br></p>';
-        if(insertAttachmentAtSavedCaret(figure))showToast('Attached '+file.name);
+        if(insertAttachmentAtSavedCaret(figure,image))showToast('Attached '+file.name);
       }catch(error){showToast(error.message);}
     }
     attachmentInsertion=null;
@@ -964,7 +1031,7 @@
   }
   function resizeAsset(figure,direction){
     const current=Number(figure.dataset.width)||240;
-    figure.dataset.width=String(Math.max(160,Math.min(900,current+direction*80)));
+    figure.dataset.width=String(Math.max(120,Math.min(900,current+direction*80)));
     figure.style.width=figure.dataset.width+'px';
     onEditorInput();
   }
@@ -997,6 +1064,44 @@
     }
     out+=esc(source.slice(at));
     if(code.innerHTML!==out)code.innerHTML=out;
+  }
+  // Recolor *during* input, preserving both selection endpoints and direction.
+  // No delayed refresh, no focus loss and no caret jump inside nested token spans.
+  function highlightCodeLive(code){
+    if(!code?.isConnected)return;
+    const sel=window.getSelection();
+    if(!sel?.rangeCount||!code.contains(sel.anchorNode)||!code.contains(sel.focusNode)){
+      colorizeCode(code);return;
+    }
+    const offsetOf=(node,offset)=>{
+      const r=document.createRange();r.selectNodeContents(code);
+      try{r.setEnd(node,offset);return r.toString().length;}catch(e){return null;}
+    };
+    const a=offsetOf(sel.anchorNode,sel.anchorOffset),f=offsetOf(sel.focusNode,sel.focusOffset);
+    if(a===null||f===null){colorizeCode(code);return;}
+    colorizeCode(code);
+    const pointAt=pos=>{
+      const walker=document.createTreeWalker(code,NodeFilter.SHOW_TEXT);
+      let node,last=null,left=Math.max(0,pos);
+      while((node=walker.nextNode())){
+        last=node;
+        if(left<=node.textContent.length)return [node,left];
+        left-=node.textContent.length;
+      }
+      if(!last){last=document.createTextNode('');code.append(last);}
+      return [last,last.textContent.length];
+    };
+    const [an,ao]=pointAt(a),[fn,fo]=pointAt(f);
+    try{
+      if(sel.setBaseAndExtent)sel.setBaseAndExtent(an,ao,fn,fo);
+      else{
+        const r=document.createRange();
+        if(a<=f){r.setStart(an,ao);r.setEnd(fn,fo);}
+        else{r.setStart(fn,fo);r.setEnd(an,ao);}
+        sel.removeAllRanges();sel.addRange(r);
+      }
+      saveSelection();
+    }catch(e){console.warn('Code caret restore skipped',e);}
   }
   function highlightBlocks(){
     $('rich-editor').querySelectorAll('pre[data-code-block]>code').forEach(code=>{
@@ -2090,8 +2195,22 @@
   }
   function bindRichText(){
     const editor=$('rich-editor');
+    let codeComposing=false;
+    editor.addEventListener('compositionstart',()=>{codeComposing=true;});
     editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
-    editor.addEventListener('input',onEditorInput);
+    editor.addEventListener('input',e=>{
+      const anchor=window.getSelection()?.anchorNode;
+      const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code')||
+        e.target.closest?.('pre[data-code-block]>code');
+      if(code&&!e.isComposing&&!codeComposing)highlightCodeLive(code);
+      onEditorInput();
+    });
+    editor.addEventListener('compositionend',()=>{
+      codeComposing=false;
+      const anchor=window.getSelection()?.anchorNode;
+      const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code');
+      if(code){highlightCodeLive(code);onEditorInput();}
+    });
     editor.addEventListener('focusout',e=>{
       const code=e.target.closest('pre[data-code-block]>code');
       if(code)setTimeout(()=>{if(code.isConnected&&!code.contains(document.activeElement)){colorizeCode(code);onEditorInput();}},40);
@@ -2120,7 +2239,22 @@
       if(codeAction){
         event.preventDefault();event.stopPropagation();
         const block=codeAction.closest('pre[data-code-block]');
-        if(block&&codeAction.dataset.codeAction==='remove'){block.remove();onEditorInput();}
+        if(!block)return;
+        if(codeAction.dataset.codeAction==='remove'){block.remove();onEditorInput();}
+        else if(codeAction.dataset.codeAction==='copy'){
+          try{
+            await navigator.clipboard.writeText(block.querySelector('code')?.textContent||'');
+            const label=codeAction.querySelector('.copy-feedback');
+            if(label)label.textContent='Copied';
+            codeAction.classList.add('is-copied');
+            showToast('Copied');
+            setTimeout(()=>{
+              if(!codeAction.isConnected)return;
+              codeAction.classList.remove('is-copied');
+              if(label)label.textContent='Copy';
+            },1400);
+          }catch(e){showToast('Copy unavailable');}
+        }
         return;
       }
       const action=event.target.closest('[data-asset-action]'),figure=action?.closest('figure[data-asset-id]');
@@ -2143,12 +2277,12 @@
       if(event.pointerType==='mouse'&&event.button!==0)return;
       event.preventDefault();event.stopPropagation();
       const pointerId=event.pointerId,startX=event.clientX,startWidth=bounds.width;
-      const maxWidth=Math.max(160,Math.min(900,editor.clientWidth-20));
+      const maxWidth=Math.max(120,Math.min(900,editor.clientWidth-20));
       let changed=false;
       figure.classList.add('image-resizing');
       const move=e=>{
         if(e.pointerId!==pointerId||!figure.isConnected)return;
-        const width=Math.round(Math.max(160,Math.min(maxWidth,startWidth+e.clientX-startX)));
+        const width=Math.round(Math.max(120,Math.min(maxWidth,startWidth+e.clientX-startX)));
         figure.style.width=width+'px';figure.dataset.width=String(width);changed=true;
       };
       const finish=e=>{
