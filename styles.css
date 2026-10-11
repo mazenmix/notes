@@ -1336,3 +1336,15 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   :root:is([data-theme="midnight"],[data-theme="nord"],[data-theme="forest"],[data-theme="rose"],[data-theme="solarized"]) .desktop-note-card.selected{background:var(--palette-hover)}
   :root:is([data-theme="midnight"],[data-theme="nord"],[data-theme="forest"],[data-theme="rose"],[data-theme="solarized"]) .desktop-notes-search input{background:var(--palette-btn);border-color:var(--palette-border);color:var(--palette-text)}
 }
+
+@media(min-width:1101px){
+  #note-list .note-group-toggle.desktop-folder-current,
+  #note-list .note-group-toggle.desktop-folder-current:hover{
+    background:#3a3b40;color:#f5f7fa;border-radius:8px
+  }
+  body[data-desktop-empty="true"] .editor-pane .editor-content,
+  body[data-desktop-empty="true"] .editor-pane .folder-view{visibility:hidden!important}
+  .desktop-note-card:focus-visible,.desktop-list-add:focus-visible{
+    outline:2px solid #e1b93c;outline-offset:-2px
+  }
+}
