@@ -360,7 +360,7 @@
       const children=groupFolders.filter(f=>f!=='Inbox'&&
       ((folder==='Inbox'&&!folderSet.has(parent(f)))||parent(f)===folder));
       return '<section class="note-group" data-note-group="'+esc(folder)+'" style="--group-depth:'+depth+'">'+
-        (folder==='Inbox'?'':'<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="true" aria-expanded="'+(!folded)+'" title="Drag to reorder or nest; drop notes here">'+icon('chevron')+
+        (folder==='Inbox'?'':'<button class="note-group-toggle '+(folded?'collapsed':'')+' '+(!isIosLayout()&&desktopFolder===folder?'desktop-folder-current':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="true" aria-expanded="'+(!folded)+'" title="Drag to reorder or nest; drop notes here">'+icon('chevron')+
           '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>')+
         (folded&&folder!=='Inbox'?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:6).map(renderNote).join('')+
            (items.length>6?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+
@@ -385,6 +385,7 @@
     if(isIosLayout())return;
     if(desktopFolder!=='all'&&desktopFolder!=='star'&&desktopFolder!=='trash'&&desktopFolder!=='Inbox'&&!state.folders.includes(desktopFolder))desktopFolder='all';
     const notes=desktopNotesFor(desktopFolder);
+    document.body.dataset.desktopEmpty=String(!notes.length);
     $('desktop-folder-label').textContent=desktopFolder==='all'?'All Notes':desktopFolder==='star'?'Starred':desktopFolder==='trash'?'Trash':folderLabel(desktopFolder);
     $('desktop-notes-items').innerHTML=notes.length?notes.map(n=>
       '<button type="button" class="desktop-note-card '+(selected===n.id&&!isFolderTab(activeTab)?'selected':'')+'" data-desktop-note="'+esc(n.id)+'">'+
@@ -1600,6 +1601,7 @@
       if(Date.now()<skipClickUntil)return;
       const group=e.target.closest('[data-group-toggle]');
       if(group){const name=group.dataset.groupToggle;
+        if(!isIosLayout()&&!e.target.closest('svg')){selectDesktopFolder(name);return;}
         if(collapsedGroups.has(name))collapsedGroups.delete(name);else collapsedGroups.add(name);
         saveUi();renderSidebar();return;
       }
@@ -1610,7 +1612,8 @@
       }
       const b=e.target.closest('[data-note-id]');if(b)openNote(b.dataset.noteId);
     });
-    $('toggle-notes-list').addEventListener('click',()=>{
+    $('toggle-notes-list').addEventListener('click',e=>{
+      if(!isIosLayout()&&!e.target.closest('svg')){notesCollapsed=false;selectDesktopFolder('Inbox');return;}
       if(filter==='trash'){filter='all';notesCollapsed=false;}
       else notesCollapsed=!notesCollapsed;
       saveUi();renderSidebar();
