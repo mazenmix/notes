@@ -41,6 +41,9 @@
     <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6M17 2v6M3 11h18"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 12-2L20 12M4 12l2.5 5a7 7 0 0 0 12-2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.3 8.5 8 11 4.7-2.5 8-6 8-11V5z"/><path d="m8 12 3 3 5-6"/></symbol>
   </svg>
   <div class="app-shell" id="shell">
     <aside class="rail" aria-label="Workspace shortcuts">
@@ -73,6 +76,7 @@
         <span class="desktop-breadcrumb" id="breadcrumb">Life <span> / </span> A calmer mind</span>
         <div class="toolbar-spacer"></div>
         <button class="sync-button" id="cloud-button" title="Cloud sync settings"><svg><use href="#i-cloud"/></svg><span id="sync-text">Saved locally</span><span class="toolbar-time" id="sync-time"></span></button>
+        <button class="icon-button" id="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false"><svg><use href="#i-sun"/></svg></button>
         <button class="icon-button" id="focus-button" aria-label="Focus mode" title="Focus mode"><svg><use href="#i-maximize"/></svg></button>
         <button class="icon-button" id="more-button" aria-label="Note actions" title="Note actions"><svg><use href="#i-more"/></svg></button>
       </div>
@@ -122,18 +126,32 @@
     <button data-action="archive"><svg><use href="#i-archive"/></svg><span id="archive-menu-label">Archive note</span></button>
     <button data-action="export"><svg><use href="#i-download"/></svg>Export Markdown</button>
     <button data-action="focus"><svg><use href="#i-maximize"/></svg>Focus mode</button>
+    <button data-action="theme"><svg><use href="#i-sun"/></svg><span id="menu-theme-label">Light theme</span></button>
+    <button data-action="sync"><svg><use href="#i-refresh"/></svg>Sync now</button>
     <button class="danger-action" data-action="delete"><svg><use href="#i-trash"/></svg>Move to trash</button>
   </div>
   <dialog class="modal" id="settings-modal" aria-labelledby="settings-title">
     <div class="modal-head"><div><span class="modal-kicker">MX NOTES</span><h2 id="settings-title">Your private writing space</h2></div><button class="icon-button" id="settings-close" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
-    <p class="modal-description">Your notes always save on this device. For encrypted-in-transit cloud sync between devices, connect your own Supabase project.</p>
+    <p class="modal-description">Your private workspace saves to this device instantly. Cloud sync is optional and requires your own Supabase account. There is no public sign-up on this site.</p>
     <div class="cloud-state" id="cloud-state">Local-only mode</div>
+    <section class="sync-verification" aria-label="Cloud sync verification">
+      <div class="verify-header"><svg><use href="#i-shield"/></svg><span>SYNC VERIFICATION</span></div>
+      <div class="verify-line"><span>Connection</span><strong id="sync-connection">Local only</strong></div>
+      <div class="verify-line"><span>Last confirmed cloud sync</span><strong id="last-sync-confirmed">Never</strong></div>
+      <div class="verify-line"><span>Unsynced changes</span><strong id="unsynced-count">Not connected</strong></div>
+      <p id="sync-explanation" class="verify-help">Notes are saved locally. To verify cloud sync, sign in below.</p>
+      <button class="sync-now-button" id="sync-now" type="button"><svg><use href="#i-refresh"/></svg> Sync now & verify</button>
+    </section>
+    <section class="appearance-setting" aria-label="Appearance">
+      <div><span class="settings-section-label">APPEARANCE</span><p>Writing theme</p><span id="theme-mode">Dark mode</span></div>
+      <button class="appearance-button" id="settings-theme-toggle" type="button"><svg><use href="#i-sun"/></svg> Switch to light</button>
+    </section>
     <div class="form-grid"><label>Supabase project URL<input id="supabase-url" type="url" placeholder="https://your-project.supabase.co" autocomplete="off"/></label><label>Publishable / anon key<input id="supabase-key" type="text" placeholder="sb_publishable_... or eyJ..." autocomplete="off"/></label><label>Email<input id="auth-email" type="email" placeholder="you@example.com" autocomplete="username"/></label><label>Password<input id="auth-password" type="password" placeholder="Your Supabase account password" autocomplete="current-password"/></label></div>
-    <div class="modal-actions"><button class="primary" id="sign-in">Sign in & sync</button><button class="secondary" id="sign-up">Create account</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
+    <div class="modal-actions"><button class="primary" id="sign-in">Sign in & sync</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
     <p class="form-feedback" id="auth-feedback" role="status"></p>
     <hr class="modal-rule"/>
     <h3>Backups & workspace</h3><div class="modal-actions"><button class="secondary" id="export-all"><svg><use href="#i-download"/></svg> Export backup</button><button class="secondary" id="import-all"><svg><use href="#i-upload"/></svg> Import backup</button><input id="import-file" type="file" accept="application/json,.json" hidden /></div>
-    <p class="fine-print">Cloud sync requires the database table and access rules from <code>supabase.sql</code> in the repository. No private service key belongs in this website.</p>
+    <p class="fine-print">One owner only: create your user inside Supabase Authentication → Users, disable new-user sign-ups in Supabase, then sign in here. Cloud sync requires <code>supabase.sql</code> and secure row-level access rules. Never use a service-role or secret key here.</p>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="./app.js" defer></script>
