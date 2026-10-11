@@ -941,8 +941,19 @@
       // Paste as plain text; rich formatting must be intentionally applied.
       e.preventDefault();document.execCommand('insertText',false,e.clipboardData.getData('text/plain'));onEditorInput();
     });
+    // Pointer events are the reliable activation path on desktop and touch.
+    // Stop the contenteditable caret jumping onto a non-editable checkbox.
+    let lastCheckboxPointer=null,lastCheckboxPointerTime=0;
     editor.addEventListener('pointerdown',e=>{
       if(e.target.closest('[data-checkbox]'))e.preventDefault();
+    });
+    editor.addEventListener('pointerup',e=>{
+      const box=e.target.closest('[data-checkbox]');
+      if(box){
+        e.preventDefault();
+        lastCheckboxPointer=box;lastCheckboxPointerTime=Date.now();
+        toggleCheckbox(box);
+      }
     });
     editor.addEventListener('keydown',e=>{
       if(e.target.closest('[data-checkbox]')){
@@ -953,7 +964,11 @@
     });
     editor.addEventListener('click',e=>{
       const checkbox=e.target.closest('[data-checkbox]');
-      if(checkbox){e.preventDefault();e.stopPropagation();toggleCheckbox(checkbox);return;}
+      if(checkbox){
+        e.preventDefault();e.stopPropagation();
+        if(checkbox!==lastCheckboxPointer||Date.now()-lastCheckboxPointerTime>550)toggleCheckbox(checkbox);
+        return;
+      }
       const link=e.target.closest('a[data-note-id]');
       if(link && (e.metaKey||e.ctrlKey)){openNote(link.dataset.noteId);}
     });
