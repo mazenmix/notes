@@ -903,7 +903,7 @@
         const selectionText=input?editor.value.slice(start,end):(hasRange?sel.toString():'');
         const point=findPointWord(e,editor);
         const suggestions=spellingSuggestions(point.spellWord||'');
-        showMenu(e.clientX,e.clientY,editorOptions(!!selectionText||!!point.spellWord,suggestions,point.spellWord||''),{id:selected,input,start,end,selectionText,...point,suggestions});return;
+        showMenu(e.clientX,e.clientY,editorOptions(!!selectionText,suggestions,point.spellWord||''),{id:selected,input,start,end,selectionText,...point,suggestions});return;
       }
       if(e.target.closest('.desktop-tabbar')){showMenu(e.clientX,e.clientY,tabBlankOptions(),{id:selected});return;}
       showMenu(e.clientX,e.clientY,appOptions(),{id:selected});
