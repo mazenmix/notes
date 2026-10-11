@@ -86,7 +86,7 @@
         const ink=safePaint(node.style?.color||node.getAttribute('color'),textColors);
         const mark=safePaint(node.style?.backgroundColor||node.getAttribute('bgcolor'),markerColors);
         const style=[ink?'color:'+ink:'',mark?'background-color:'+mark:''].filter(Boolean).join(';');
-        if(style)attrs=' style="'+style+'"';
+        if(style)attrs+=' style="'+style+'"';
       }
       if(t==='span'&&['0','1'].includes(node.getAttribute('data-checkbox'))){
         const checked=node.getAttribute('data-checkbox')==='1';
@@ -921,84 +921,112 @@
     if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
     attachmentInsertion={noteId:note.id,range};
   }
+  // A gallery is an insertion target only when the caret is actually inside it.
+  // Empty paragraphs below images are deliberate new lines, never "add beside".
   function imageGalleryAtCaret(range,editor){
-    if(!range)return null;
+    if(!range||!editor.contains(range.startContainer))return null;
     const node=range.startContainer;
-    const element=node.nodeType===1?node:node.parentElement;
-    if(!element||!editor.contains(element))return null;
-    const existing=element.closest?.('[data-asset-gallery="1"]');
-    if(existing)return existing;
-    let before=null;
-    if(node.nodeType===1&&range.startOffset>0){
-      before=node.childNodes[range.startOffset-1];
-      if(before?.nodeType===3)before=before.previousSibling;
-    }
-    if(before?.nodeType===1&&before.matches?.('p')&&!before.textContent.trim()){
-      before=before.previousElementSibling;
-    }
-    const block=element.closest?.('p,div,figure');
-    if(!before&&block&&block!==editor){
-      // A blank paragraph directly after a gallery means "add beside".
-      if(!block.textContent.trim())before=block.previousElementSibling;
-    }
-    // When selection ends exactly at a gallery boundary, the browser may
-    // place the caret in the editor root just after its empty trailing <p>.
-    if(!before&&element===editor&&range.startOffset>0){
-      const neighbor=editor.childNodes[range.startOffset-1];
-      before=neighbor?.nodeType===1&&neighbor.matches?.('p')&&!neighbor.textContent.trim()?
-        neighbor.previousElementSibling:neighbor;
-    }
-    if(before?.nodeType===1&&before.matches?.('[data-asset-gallery="1"]'))return before;
-    if(before?.nodeType===1&&before.matches?.('figure[data-kind="image"]')){
-      const gallery=document.createElement('div');
-      gallery.dataset.assetGallery='1';
-      before.parentNode.insertBefore(gallery,before);gallery.append(before);
-      return gallery;
-    }
-    return null;
+    const el=node.nodeType===1?node:node.parentElement;
+    const gallery=el?.closest?.('[data-asset-gallery="1"]');
+    return gallery&&editor.contains(gallery)?gallery:null;
+  }
+  function galleryInsertIndex(gallery,range){
+    if(range.startContainer===gallery)return Math.min(range.startOffset,gallery.childNodes.length);
+    let node=range.startContainer;
+    while(node&&node.parentNode!==gallery)node=node.parentNode;
+    if(!node)return gallery.childNodes.length;
+    return Array.prototype.indexOf.call(gallery.childNodes,node);
+  }
+  function placeCaretIn(block){
+    const sel=window.getSelection(),range=document.createRange();
+    range.selectNodeContents(block);range.collapse(true);
+    sel.removeAllRanges();sel.addRange(range);
+    savedSelection=range.cloneRange();
+  }
+  // Insert a block exactly at a text caret. Split text paragraphs so words on
+  // either side keep their original order instead of pushing the image to the end.
+  function insertImageBlockAtRange(editor,range,figure){
+    const gallery=document.createElement('div');
+    gallery.dataset.assetGallery='1';
+    gallery.append(figure);
+    let top=range.startContainer;
+    while(top&&top!==editor&&top.parentNode!==editor)top=top.parentNode;
+    if(top===editor){
+      const offset=range.startContainer===editor?range.startOffset:editor.childNodes.length;
+      const first=editor.firstElementChild;
+      const index=first?.hasAttribute('data-note-title')?Math.max(1,offset):offset;
+      editor.insertBefore(gallery,editor.childNodes[index]||null);
+    }else if(top&&top.parentNode===editor){
+      if(/^(P|DIV|H1|H2|H3|BLOCKQUOTE)$/.test(top.tagName)&&
+          !top.hasAttribute('data-asset-gallery')&&!top.hasAttribute('data-note-title')){
+        const remainder=range.cloneRange();
+        remainder.setEnd(top,top.childNodes.length);
+        const tail=remainder.extractContents();
+        top.insertAdjacentElement('afterend',gallery);
+        const following=document.createElement(top.tagName==='DIV'?'p':top.tagName.toLowerCase());
+        following.append(tail);
+        if(!following.textContent&&!following.querySelector('br'))following.append(document.createElement('br'));
+        gallery.insertAdjacentElement('afterend',following);
+        if(!top.textContent&&!top.querySelector('br'))top.append(document.createElement('br'));
+        return {gallery,following};
+      }
+      top.insertAdjacentElement('afterend',gallery);
+    }else editor.append(gallery);
+    const following=document.createElement('p');
+    following.append(document.createElement('br'));
+    gallery.insertAdjacentElement('afterend',following);
+    return {gallery,following};
   }
   function insertAttachmentAtSavedCaret(markup,isImage=false){
     const bookmark=attachmentInsertion,note=bookmark&&findNote(bookmark.noteId);
     if(!note||note.deleted||note.purged){showToast('Original note unavailable');return false;}
-    // Never insert into another note if a tab was changed while uploading.
     if(current()?.id!==note.id){
-      // Only append to the original note when its editor is no longer active.
-      note.html=safeHtml((note.html||'')+(isImage?'<div data-asset-gallery="1">'+markup.split('</figure>')[0]+'</figure></div><p><br></p>':markup));
+      // Preserve the destination note even if an upload finishes after a tab switch.
+      note.html=safeHtml((note.html||'')+(isImage?'<div data-asset-gallery="1">'+
+        markup.slice(0,markup.indexOf('</figure>')+9)+'</div><p><br></p>':markup));
       note.updatedAt=stamp();persist();renderSidebar();renderDesktopNotes();renderIos();
       return true;
     }
     const editor=$('rich-editor'),range=bookmark.range;
     editor.focus({preventScroll:true});
-    if(isImage&&range&&editor.contains(range.startContainer)){
-      const gallery=imageGalleryAtCaret(range,editor);
+    if(isImage){
+      const template=document.createElement('template');
+      template.innerHTML=markup;
+      const figure=template.content.querySelector('figure[data-kind="image"]');
+      if(!figure)return false;
+      let gallery=imageGalleryAtCaret(range,editor),following=null,position;
       if(gallery){
-        const template=document.createElement('template');template.innerHTML=markup;
-        const figure=template.content.querySelector('figure[data-kind="image"]');
-        if(figure){
-          gallery.append(figure);
-          const end=document.createRange(),sel=window.getSelection();
-          end.setStartAfter(gallery);end.collapse(true);
-          sel.removeAllRanges();sel.addRange(end);
-          bookmark.range=end.cloneRange();
-          hydrateAssets();onEditorInput();saveSelection();
-          return true;
+        position=galleryInsertIndex(gallery,range);
+        gallery.insertBefore(figure,gallery.childNodes[position]||null);
+        following=gallery.nextElementSibling;
+        if(!following?.matches('p')){
+          following=document.createElement('p');
+          following.append(document.createElement('br'));
+          gallery.insertAdjacentElement('afterend',following);
         }
+      }else{
+        const live=range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)?
+          range.cloneRange():(()=>{const r=document.createRange();r.selectNodeContents(editor);r.collapse(false);return r;})();
+        // Do not delete a user's text selection when adding a picture.
+        live.collapse(false);
+        ({gallery,following}=insertImageBlockAtRange(editor,live,figure));
+        position=0;
       }
+      const next=document.createRange();
+      next.setStart(gallery,Math.min(position+1,gallery.childNodes.length));next.collapse(true);
+      bookmark.range=next.cloneRange(); // multiple selected images stay adjacent
+      placeCaretIn(following); // manual next insertion follows the visible caret
+      hydrateAssets();onEditorInput();return true;
     }
-    if(isImage)markup='<div data-asset-gallery="1">'+markup.split('</figure>')[0]+'</figure></div><p><br></p>';
     if(range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)){
-      const sel=window.getSelection();
-      sel.removeAllRanges();sel.addRange(range.cloneRange());
-      const inserted=document.execCommand('insertHTML',false,markup);
-      if(!inserted){
-        const live=sel.getRangeAt(0);
-        live.deleteContents();
-        const fragment=live.createContextualFragment(markup),last=fragment.lastChild;
-        live.insertNode(fragment);
+      const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range.cloneRange());
+      if(!document.execCommand('insertHTML',false,markup)){
+        const live=sel.getRangeAt(0);live.deleteContents();
+        const frag=live.createContextualFragment(markup),last=frag.lastChild;
+        live.insertNode(frag);
         if(last){live.setStartAfter(last);live.collapse(true);sel.removeAllRanges();sel.addRange(live);}
       }
     }else{
-      // A re-render invalidated the Range: append to THIS note, not its top.
       editor.insertAdjacentHTML('beforeend',markup);
       const sel=window.getSelection(),end=document.createRange();
       end.selectNodeContents(editor);end.collapse(false);
@@ -2193,22 +2221,106 @@
       if(!e.target.closest('#paint-menu,#text-color-picker,#highlight-picker'))hidePaintMenu();
     });
   }
+  // Native contenteditable hit-testing frequently snaps clicks on blank space
+  // back to an older paragraph, especially after noneditable media figures.
+  function handleEditorBlankPointer(event,editor){
+    if(event.button!==0||!current()||event.target.closest('figure,pre,table,a,button,[data-checkbox]'))return;
+    const gallery=event.target.closest('[data-asset-gallery="1"]');
+    if(gallery&&editor.contains(gallery)){
+      if(event.target!==gallery)return;
+      const figures=[...gallery.children].filter(n=>n.matches('figure[data-kind="image"]'));
+      if(!figures.length)return;
+      // A click in the vertical gap between wrapped images means a new text line.
+      const split=figures.findIndex((figure,i)=>i>0&&
+        event.clientY>figures[i-1].getBoundingClientRect().bottom+2&&
+        event.clientY<figure.getBoundingClientRect().top-2);
+      if(split>0){
+        const later=document.createElement('div');later.dataset.assetGallery='1';
+        figures.slice(split).forEach(f=>later.append(f));
+        const p=document.createElement('p');p.append(document.createElement('br'));
+        gallery.insertAdjacentElement('afterend',p);p.insertAdjacentElement('afterend',later);
+        event.preventDefault();editor.focus({preventScroll:true});placeCaretIn(p);
+        onEditorInput();return;
+      }
+      const index=figures.findIndex(f=>{
+        const r=f.getBoundingClientRect();
+        return event.clientY<r.top-3||
+          (event.clientY<=r.bottom+3&&event.clientX<r.left+r.width/2);
+      });
+      event.preventDefault();editor.focus({preventScroll:true});
+      const range=document.createRange(),sel=window.getSelection();
+      range.setStart(gallery,index<0?gallery.childNodes.length:index);range.collapse(true);
+      sel.removeAllRanges();sel.addRange(range);saveSelection();return;
+    }
+    if(event.target!==editor)return; // text and empty paragraphs retain native selection
+    const y=event.clientY;
+    if(y<editor.getBoundingClientRect().top)return;
+    const children=[...editor.children];
+    if(!children.length)return;
+    let after=children.find(el=>el.getBoundingClientRect().top>y);
+    if(after===children[0])after=children[1]||null;
+    let paragraph=null,changed=false;
+    if(after){
+      const prev=after.previousElementSibling;
+      if(prev?.matches('p')&&y<=prev.getBoundingClientRect().bottom+4)paragraph=prev;
+      else{
+        paragraph=document.createElement('p');paragraph.append(document.createElement('br'));
+        editor.insertBefore(paragraph,after);changed=true;
+      }
+    }else{
+      const last=editor.lastElementChild;
+      if(last?.matches('p')&&!last.textContent.trim())paragraph=last;
+      else{
+        paragraph=document.createElement('p');paragraph.append(document.createElement('br'));
+        editor.append(paragraph);changed=true;
+      }
+      // Make an otherwise empty lower editor area directly clickable.
+      // Limit created lines to avoid accidentally filling the note with huge gaps.
+      let count=0;
+      while(paragraph.getBoundingClientRect().top<y-18&&count++<28){
+        const p=document.createElement('p');p.append(document.createElement('br'));
+        paragraph.insertAdjacentElement('afterend',p);paragraph=p;changed=true;
+      }
+    }
+    if(!paragraph)return;
+    event.preventDefault();editor.focus({preventScroll:true});placeCaretIn(paragraph);
+    if(changed)onEditorInput();
+  }
+
   function bindRichText(){
     const editor=$('rich-editor');
     let codeComposing=false;
-    editor.addEventListener('compositionstart',()=>{codeComposing=true;});
-    editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
-    editor.addEventListener('input',e=>{
+    const activeCode=e=>{
       const anchor=window.getSelection()?.anchorNode;
-      const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code')||
-        e.target.closest?.('pre[data-code-block]>code');
+      return (anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code')||
+        e?.target?.closest?.('pre[data-code-block]>code')||null;
+    };
+    editor.addEventListener('pointerdown',e=>handleEditorBlankPointer(e,editor));
+    editor.addEventListener('compositionstart',()=>{codeComposing=true;});
+    editor.addEventListener('paste',e=>{
+      const code=activeCode(e);if(!code)return;
+      const text=e.clipboardData?.getData('text/plain');if(typeof text!=='string')return;
+      e.preventDefault();
+      document.execCommand('insertText',false,text.replace(/\r\n?/g,'\n'));
+      highlightCodeLive(code);onEditorInput();
+    });
+    editor.addEventListener('beforeinput',e=>{
+      const code=activeCode(e);
+      if(code&&!e.isComposing&&(e.inputType==='insertParagraph'||e.inputType==='insertLineBreak')){
+        e.preventDefault();
+        document.execCommand('insertText',false,'\n');
+        highlightCodeLive(code);onEditorInput();return;
+      }
+      autoCorrectOnSpace(e,editor);
+    });
+    editor.addEventListener('input',e=>{
+      const code=activeCode(e);
       if(code&&!e.isComposing&&!codeComposing)highlightCodeLive(code);
       onEditorInput();
     });
     editor.addEventListener('compositionend',()=>{
       codeComposing=false;
-      const anchor=window.getSelection()?.anchorNode;
-      const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code');
+      const code=activeCode();
       if(code){highlightCodeLive(code);onEditorInput();}
     });
     editor.addEventListener('focusout',e=>{
@@ -2324,7 +2436,7 @@
       }
       const code=e.target.closest('pre[data-code-block]>code');
       if(code&&(e.key==='Tab'||e.key==='Enter')){
-        e.preventDefault();document.execCommand('insertText',false,e.key==='Tab'?'  ':'\n');onEditorInput();return;
+        e.preventDefault();document.execCommand('insertText',false,e.key==='Tab'?'  ':'\n');highlightCodeLive(code);onEditorInput();return;
       }
       if(headingEnter(e))return;
       checklistEnter(e);
