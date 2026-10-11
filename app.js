@@ -7,6 +7,8 @@
   const STORAGE = 'mxnotes.workspace.v1';
   const CONFIG_KEY = 'mxnotes.cloud.config';
   const SESSION_KEY = 'mxnotes.cloud.session';
+  const THEME_KEY = 'mxnotes.appearance.theme';
+  const LAST_SYNC_KEY = 'mxnotes.cloud.lastVerified';
   const newId = () => window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   const now = () => new Date().toISOString();
   const clampText = (s,n) => String(s || '').length > n ? String(s).slice(0,n-1) + '…' : String(s || '');
@@ -77,6 +79,9 @@
   try {cloudConfig = JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null');session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');}
   catch(e){ cloudConfig=null;session=null; }
   let filter = 'all', search = '', insightPanel = 'graph', preview = false, syncTimer = null, syncBusy = false, syncPending = false, toastTimer, cloudStatus = session ? 'Connecting…' : 'Saved locally', dirty = false;
+  let themeMode = localStorage.getItem(THEME_KEY)==='light' ? 'light' : 'dark';
+  let lastVerified = null;
+  try {lastVerified = JSON.parse(localStorage.getItem(LAST_SYNC_KEY)||'null');} catch(e) {lastVerified=null;}
   const noteById = (id) => state.notes.find(n=>n.id===id);
   const current = () => noteById(state.selected) || null;
   const visibleNotes = () => state.notes.filter(n=>!n.deleted&&!n.archived);
@@ -94,11 +99,53 @@
     if(touch){dirty=true;queueSync();}
     updateStatus();
   }
+  function isVerifiedForUser(){
+    return !!(lastVerified && session?.user?.id && cloudConfig?.url &&
+      lastVerified.userId===session.user.id && lastVerified.project===cloudConfig.url);
+  }
+  function markVerified(snapshot){
+    if(!cloudReady())return;
+    lastVerified={userId:session.user.id,project:cloudConfig.url,verifiedAt:now(),workspaceUpdatedAt:snapshot};
+    localStorage.setItem(LAST_SYNC_KEY,JSON.stringify(lastVerified));
+    dirty=(snapshot!==state.updatedAt);
+    setCloudStatus(dirty?'Saving…':'Saved to cloud');
+  }
+  function applyTheme(){
+    document.documentElement.setAttribute('data-theme',themeMode);
+    const light=themeMode==='light';
+    $('theme-toggle').innerHTML=icon(light?'moon':'sun');
+    $('theme-toggle').setAttribute('aria-label',light?'Switch to dark theme':'Switch to light theme');
+    $('theme-toggle').setAttribute('title',light?'Switch to dark theme':'Switch to light theme');
+    $('theme-toggle').setAttribute('aria-pressed',String(light));
+    $('theme-mode').textContent=light?'Light mode':'Dark mode';
+    $('settings-theme-toggle').innerHTML=icon(light?'moon':'sun')+(light?' Switch to dark':' Switch to light');
+    const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=light?'#f4f3ef':'#101214';
+    const menu=$('note-menu').querySelector('[data-action="theme"]');
+    if(menu)menu.innerHTML=icon(light?'moon':'sun')+'<span>'+(light?'Dark theme':'Light theme')+'</span>';
+  }
+  function toggleTheme(){
+    themeMode=themeMode==='dark'?'light':'dark';
+    localStorage.setItem(THEME_KEY,themeMode);
+    applyTheme();
+    toast(themeMode==='dark'?'Dark theme enabled':'Light theme enabled');
+  }
   function updateStatus() {
+    const connected=cloudReady(),verified=connected&&isVerifiedForUser();
     $('sync-text').textContent=cloudStatus;
-    $('sync-time').textContent = cloudStatus==='Saved to cloud' ? '· '+timeAgo(state.updatedAt) : '';
-    $('sidebar-status').textContent = cloudStatus==='Saved to cloud' ? 'Cloud synchronized' : cloudStatus;
-    $('cloud-state').textContent = session && session.user ? ('Signed in as '+session.user.email+' · '+cloudStatus) : 'Local-only mode · cloud not connected';
+    $('sync-time').textContent=verified && cloudStatus==='Saved to cloud' ? '· '+timeAgo(lastVerified.verifiedAt) : '';
+    $('sidebar-status').textContent=cloudStatus==='Saved to cloud' ? 'Cloud verified' : cloudStatus;
+    $('cloud-state').textContent=connected ? ('Signed in as '+session.user.email+' · '+cloudStatus) : 'Local-only mode · cloud not connected';
+    $('sync-connection').textContent=connected ? (cloudStatus==='Saved to cloud'?'Connected · verified':'Signed in · '+cloudStatus) : 'Not connected';
+    $('last-sync-confirmed').textContent=verified ? new Date(lastVerified.verifiedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : 'Never verified';
+    const pending=connected && (dirty||!verified||lastVerified.workspaceUpdatedAt!==state.updatedAt);
+    $('unsynced-count').textContent=!connected?'Local device only':pending?'Pending verification':'None · verified';
+    $('sync-explanation').textContent=!connected ?
+      'Your notes are saved on this device. Sign in below to enable cloud confirmation.' :
+      cloudStatus.startsWith('Offline') ?
+      'Cloud verification failed. Notes are still saved on this device. Check your network and press Sync now & verify.' :
+      pending ? 'The latest local changes have not yet been confirmed on the cloud server.' :
+      'Verified: the server returned the same saved workspace revision.';
+    $('sync-now').disabled=!connected||syncBusy;
     $('sign-out').hidden=!session;
   }
   function toast(message) {
@@ -307,6 +354,8 @@
     const n=current();if(!n)return;
     $('note-menu').hidden=true;
     if(action==='focus'){toggleFocus();return;}
+    if(action==='theme'){toggleTheme();return;}
+    if(action==='sync'){syncNow();return;}
     if(action==='star'){mutateNote('starred',!n.starred);toast(n.starred?'Note starred':'Star removed');}
     if(action==='move'){
       const options=['Inbox',...state.folders];
@@ -366,28 +415,24 @@
     localStorage.setItem(CONFIG_KEY,JSON.stringify(cloudConfig));
     if(session)localStorage.setItem(SESSION_KEY,JSON.stringify(session));else localStorage.removeItem(SESSION_KEY);
   }
-  async function login(signUp){
+  async function login(){
     try{
       const url=cleanUrl($('supabase-url').value),key=$('supabase-key').value.trim();
       if(!key)throw Error('Enter a Supabase publishable/anon key');
-      cloudConfig={url,key};storeCloud();
       const email=$('auth-email').value.trim(),password=$('auth-password').value;
       if(!email||!password)throw Error('Enter email and password');
-      $('auth-feedback').textContent='Connecting…';
-      let result;
-      if(signUp) {
-        result=await api('/auth/v1/signup',{method:'POST',body:JSON.stringify({email,password})},false);
-        if(!result.access_token) {
-          $('auth-feedback').textContent='Account created. Check your email to confirm, then sign in.';
-          toast('Check your email to confirm your account');
-          return;
-        }
-      } else result=await api('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})},false);
+      $('auth-feedback').textContent='Authenticating…';
+      cloudConfig={url,key};storeCloud();
+      const result=await api('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})},false);
       if(!result.access_token||!result.user)throw Error('Authentication did not return a session');
       session={access_token:result.access_token,refresh_token:result.refresh_token,expires_at:Date.now()+result.expires_in*1000,user:{id:result.user.id,email:result.user.email}};
-      storeCloud();setCloudStatus('Syncing…');$('auth-feedback').textContent='Signed in successfully.';
-      await pullCloud(true);$('settings-modal').close();toast('Cloud sync connected');
-    }catch(e){setCloudStatus('Saved locally');$('auth-feedback').textContent=e.message;toast('Cloud connection: '+e.message);}
+      $('auth-password').value='';
+      storeCloud();setCloudStatus('Syncing…');
+      $('auth-feedback').textContent='Authenticated. Verifying cloud data…';
+      const ok=await pullCloud(true);
+      if(ok){$('auth-feedback').textContent='Cloud sync verified.';$('settings-modal').close();toast('Cloud sync verified successfully');}
+      else $('auth-feedback').textContent='Signed in, but the cloud could not be verified. Check the Supabase SQL setup and tap Sync now & verify.';
+    }catch(e){setCloudStatus('Offline · saved locally');$('auth-feedback').textContent=e.message;toast('Sign in failed: '+e.message);}
   }
   async function refreshSession(){
     if(!session||session.expires_at>Date.now()+90000)return;
@@ -400,13 +445,19 @@
     await refreshSession();
     return api('/rest/v1/vault?select=payload,updated_at&user_id=eq.'+encodeURIComponent(session.user.id)+'&limit=1',{method:'GET'});
   }
-  async function remoteWrite(){
+  async function remoteWrite(snapshot=state){
     await refreshSession();
     await api('/rest/v1/vault?on_conflict=user_id',{
       method:'POST',
       headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
-      body:JSON.stringify({user_id:session.user.id,payload:state,updated_at:state.updatedAt})
+      body:JSON.stringify({user_id:session.user.id,payload:snapshot,updated_at:snapshot.updatedAt})
     });
+  }
+  async function verifyRemote(expected){
+    const rows=await remoteRead(),row=Array.isArray(rows)?rows[0]:null;
+    if(!row?.payload||row.payload.updatedAt!==expected)throw Error('Cloud confirmation does not match the latest saved revision');
+    markVerified(expected);
+    return true;
   }
   function queueSync(){
     if(!cloudReady()){setCloudStatus('Saved locally');return;}
@@ -415,35 +466,74 @@
     syncTimer=setTimeout(()=>pushCloud(),1400);
   }
   async function pushCloud(){
-    if(!cloudReady())return;
-    if(syncBusy){syncPending=true;return;}
-    syncBusy=true;
+    if(!cloudReady())return false;
+    if(syncBusy){syncPending=true;return false;}
+    syncBusy=true;setCloudStatus('Syncing…');
+    let success=false;
     try {
-      await remoteWrite();dirty=false;setCloudStatus('Saved to cloud');
-    } catch(e){setCloudStatus('Offline · saved locally');console.warn('Cloud save failed:',e);}
-    finally {syncBusy=false;if(syncPending){syncPending=false;queueSync();}}
+      const snapshot=JSON.parse(JSON.stringify(state));
+      await remoteWrite(snapshot);
+      await verifyRemote(snapshot.updatedAt);
+      success=true;
+    } catch(e){setCloudStatus('Offline · saved locally');console.warn('Cloud save/verify failed:',e);}
+    finally{
+      syncBusy=false;
+      if(dirty||syncPending){syncPending=false;queueSync();}
+      updateStatus();
+    }
+    return success;
   }
   async function pullCloud(first=false){
-    if(!cloudReady())return;
-    if(syncBusy||(!first && dirty))return;
+    if(!cloudReady())return false;
+    if(syncBusy){syncPending=true;return false;}
+    if(!first&&dirty)return false;
     syncBusy=true;setCloudStatus('Syncing…');
+    let success=false;
     try {
+      const initialStamp=state.updatedAt;
       const rows=await remoteRead();
-      const row=Array.isArray(rows) ? rows[0] : null;
-      if(row && row.payload && Date.parse(row.payload.updatedAt)>Date.parse(state.updatedAt)){
+      const row=Array.isArray(rows)?rows[0]:null;
+      if(row?.payload && Date.parse(row.payload.updatedAt)>Date.parse(state.updatedAt) && !dirty){
         state=sanitizeWorkspace(row.payload);
         state.selected=state.notes.some(n=>n.id===state.selected)?state.selected:(state.notes[0]?.id||null);
         localStorage.setItem(STORAGE,JSON.stringify(state));
-        renderSidebar();renderNote();toast('Notes updated from cloud');
-      }else if(!row || Date.parse(state.updatedAt)>Date.parse(row.payload?.updatedAt||0)){
-        await remoteWrite();
+        renderSidebar();renderNote();
+        toast('Notes updated from cloud');
+        markVerified(state.updatedAt);
+      }else if(!row||Date.parse(state.updatedAt)>Date.parse(row.payload?.updatedAt||0)){
+        const snapshot=JSON.parse(JSON.stringify(state));
+        await remoteWrite(snapshot);
+        await verifyRemote(snapshot.updatedAt);
+      }else{
+        if(initialStamp===state.updatedAt)markVerified(state.updatedAt);
+        else {dirty=true;syncPending=true;}
       }
-      dirty=false;setCloudStatus('Saved to cloud');
-    } catch(e) {setCloudStatus('Offline · saved locally');console.warn('Cloud pull failed:',e);if(first)toast('Cloud setup: '+e.message);}
-    finally {syncBusy=false;if(syncPending){syncPending=false;queueSync();}}
+      success=true;
+    } catch(e) {
+      setCloudStatus('Offline · saved locally');
+      console.warn('Cloud pull/verify failed:',e);
+      if(first)toast('Cloud verification failed: '+e.message);
+    } finally{
+      syncBusy=false;
+      if(dirty||syncPending){syncPending=false;queueSync();}
+      updateStatus();
+    }
+    return success;
+  }
+  async function syncNow(){
+    if(!cloudReady()){settingsOpen();$('auth-feedback').textContent='Sign in to your cloud account before syncing.';return;}
+    if(syncBusy){toast('Sync already in progress');return;}
+    clearTimeout(syncTimer);
+    $('auth-feedback').textContent='Checking cloud sync…';
+    const ok=dirty||!isVerifiedForUser()||lastVerified.workspaceUpdatedAt!==state.updatedAt ? await pushCloud() : await pullCloud(true);
+    $('auth-feedback').textContent=ok?'Last sync confirmed by the cloud server.':'Could not verify cloud sync. Local notes are safe; check your network and setup.';
+    toast(ok?'Last sync confirmed ✓':'Sync not confirmed · saved locally');
   }
   function signOut(){
-    session=null;storeCloud();setCloudStatus('Saved locally');$('auth-feedback').textContent='Signed out on this device.';toast('Signed out. Notes remain on this device.');
+    clearTimeout(syncTimer);syncPending=false;session=null;storeCloud();
+    setCloudStatus('Saved locally');
+    $('auth-feedback').textContent='Signed out. Notes remain saved on this device.';
+    toast('Signed out');
   }
   function downloadBackup(){download('mx-notes-backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json;charset=utf-8');toast('Backup exported');}
   async function importBackup(file){
@@ -467,13 +557,14 @@
     const mod=e.ctrlKey||e.metaKey;
     if(mod&&e.key.toLowerCase()==='k'){e.preventDefault();openSidebar(true);}
     if(mod&&e.key.toLowerCase()==='n'){e.preventDefault();createNote();}
-    if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();persist(false);queueSync();toast('Saved');}
+    if(mod&&e.key.toLowerCase()==='s'){e.preventDefault();persist(false);queueSync();toast('Saved locally'+(cloudReady()?' · syncing…':''));}
+    if(mod&&e.shiftKey&&e.key.toLowerCase()==='l'){e.preventDefault();toggleTheme();}
     if(e.key==='Escape'){closePanels();if(document.body.classList.contains('focus-mode'))toggleFocus();}
     if(e.key==='Tab' && e.target===$('note-body') && !e.shiftKey){e.preventDefault();insertText('  ');}
   }
   function init() {
     if(!current())state.selected=visibleNotes()[0]?.id || state.notes[0]?.id || null;
-    renderSidebar();renderNote();updateStatus();
+    applyTheme();renderSidebar();renderNote();updateStatus();
     $('new-note').addEventListener('click',createNote);$('tab-new').addEventListener('click',createNote);$('mobile-new').addEventListener('click',createNote);
     $('new-folder').addEventListener('click',addFolder);
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
@@ -536,8 +627,10 @@
       if(action==='graph'||action==='backlinks')openInsights(action);
     }));
     $('settings-close').addEventListener('click',()=>$('settings-modal').close());
-    $('sign-in').addEventListener('click',()=>login(false));
-    $('sign-up').addEventListener('click',()=>login(true));
+    $('sign-in').addEventListener('click',login);
+    $('sync-now').addEventListener('click',syncNow);
+    $('theme-toggle').addEventListener('click',toggleTheme);
+    $('settings-theme-toggle').addEventListener('click',toggleTheme);
     $('sign-out').addEventListener('click',signOut);
     $('export-all').addEventListener('click',downloadBackup);
     $('import-all').addEventListener('click',()=>$('import-file').click());
@@ -546,7 +639,7 @@
     window.addEventListener('focus',()=>{if(cloudReady()&&!dirty)pullCloud();});
     document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudReady()&&!dirty)pullCloud();});
     setInterval(()=>{if(cloudReady()&&!document.hidden&&!dirty)pullCloud();},60000);
-    setInterval(()=>{if(current())$('note-updated').textContent='Edited '+timeAgo(current().updatedAt);if(cloudStatus==='Saved to cloud')updateStatus();},30000);
+    setInterval(()=>{if(current())$('note-updated').textContent='Edited '+timeAgo(current().updatedAt);updateStatus();},30000);
     if(cloudReady())pullCloud(true);
   }
   init();
