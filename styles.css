@@ -1695,7 +1695,7 @@ body[data-ios-layout="true"] .desktop-notes-panel{display:none!important}
   position:relative;display:block!important;flex:0 0 auto!important;
   float:none!important;clear:none!important;
   margin:0!important;vertical-align:top;
-  max-width:100%!important;min-width:160px;
+  max-width:100%!important;min-width:120px;
 }
 .rich-editor figure[data-asset-id][data-kind="image"],
 .rich-editor figure[data-asset-id][data-kind="image"]:hover,
