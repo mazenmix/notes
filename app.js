@@ -161,7 +161,8 @@
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
   const current=()=>state.notes.find(n=>n.id===selected)||null;
-  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived&&!n.purged);
+  // The Archive navigation is retired; all non-trashed notes remain accessible.
+  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.purged);
   const findNote=id=>state.notes.find(n=>n.id===id);
   const folderLabel=name=>name==='Inbox'?'Notes':name;
   const folderParent=name=>state.folderParents?.[name]||null;
@@ -1316,8 +1317,8 @@
         return true;
       }
       const source=findNote(draggedItem.id);
-      if(!source||source.deleted||source.purged)return false;
-      if(target.type==='trash')return true;
+      if(!source||source.purged)return false;
+      if(target.type==='trash')return !source.deleted;
       return target.type==='folder'||(target.type==='note'&&target.id!==draggedItem.id);
     }
     function moveFolder(name,destination,placement){
@@ -1342,7 +1343,7 @@
       return true;
     }
     function moveNote(noteId,destination,placement='inside'){
-      const note=findNote(noteId);if(!note||note.deleted||note.purged)return false;
+      const note=findNote(noteId);if(!note||note.purged)return false;
       const targetNote=placement==='before'||placement==='after'?findNote(destination):null;
       const folder=targetNote?targetNote.folder:destination;
       if(folder!=='Inbox'&&!state.folders.includes(folder))return false;
@@ -1355,7 +1356,9 @@
       state.noteOrder={...state.noteOrder};
       for(const [key,ids] of Object.entries(state.noteOrder))state.noteOrder[key]=ids.filter(id=>id!==noteId);
       state.noteOrder[folder]=destinationNotes;
-      if(note.folder!==folder){note.folder=folder;note.updatedAt=stamp();}
+      if(note.folder!==folder||note.deleted||note.archived){
+        note.folder=folder;note.deleted=false;note.archived=false;note.updatedAt=stamp();
+      }
       notesCollapsed=false;collapsedGroups.delete(folder);showAllGroups.add(folder);
       if(filter.startsWith('folder:')&&filter.slice(7)!==folder)filter='all';
       markOrganizationChanged();saveUi();renderAll();
