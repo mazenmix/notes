@@ -43,6 +43,7 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5 8.5 8.5 0 1 0 20.5 15.5z"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 12-2L20 12M4 12l2.5 5a7 7 0 0 0 12-2"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 1.7-4.3c-.7-.7-.2-1.7.7-1.7h2.6A3.5 3.5 0 0 0 22 11.5 9 9 0 0 0 12 3Z"/><circle cx="7.4" cy="11.4" r=".65" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7.5" r=".65" fill="currentColor" stroke="none"/><circle cx="15.4" cy="8.3" r=".65" fill="currentColor" stroke="none"/><circle cx="6.9" cy="15.5" r=".65" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.3 8.5 8 11 4.7-2.5 8-6 8-11V5z"/><path d="m8 12 3 3 5-6"/></symbol>
   </svg>
   <div class="app-shell" id="shell">
@@ -50,9 +51,8 @@
       <div class="brand" title="MX Notes">N</div>
       <button class="rail-button" id="rail-notes" title="Notes" aria-label="Notes"><svg><use href="#i-file"/></svg></button>
       <button class="rail-button" id="rail-star" title="Starred" aria-label="Starred"><svg><use href="#i-star"/></svg></button>
-      <button class="rail-button" id="rail-graph" title="Graph" aria-label="Graph"><svg><use href="#i-graph"/></svg></button>
       <div class="rail-spacer"></div>
-      <button class="rail-button" id="rail-settings" title="Cloud & settings" aria-label="Cloud & settings"><svg><use href="#i-settings"/></svg></button>
+      <button class="rail-button" id="rail-settings" title="Appearance & settings" aria-label="Appearance & settings"><svg><use href="#i-palette"/></svg></button>
       <div class="brand-mini">MX</div>
     </aside>
     <aside class="sidebar" id="sidebar" aria-label="Notes navigation">
@@ -63,7 +63,7 @@
         <div id="quick-links"></div>
         <div class="section-heading"><span>PINNED FOLDERS</span><button id="new-folder" aria-label="Add folder" title="New folder"><svg><use href="#i-plus"/></svg></button></div>
         <div id="folder-list"></div>
-        <div class="section-heading notes-heading"><span>NOTES</span><span id="notes-total" class="tiny-count"></span></div>
+        <div class="section-heading notes-heading"><button id="toggle-notes-list" class="section-collapse" type="button" aria-expanded="true" title="Collapse / expand notes"><svg><use href="#i-chevron"/></svg><span>NOTES</span></button><span id="notes-total" class="tiny-count"></span></div>
         <div id="note-list"></div>
       </div>
       <div class="sidebar-foot"><span class="status-led"></span><span id="sidebar-status">Saved on this device</span><button id="sidebar-cloud" aria-label="Cloud settings"><svg><use href="#i-cloud"/></svg></button></div>
@@ -77,16 +77,15 @@
         <div class="toolbar-spacer"></div>
         <button class="sync-button" id="cloud-button" title="Cloud sync settings"><svg><use href="#i-cloud"/></svg><span id="sync-text">Saved locally</span><span class="toolbar-time" id="sync-time"></span></button>
         <button class="icon-button" id="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false"><svg><use href="#i-sun"/></svg></button>
-        <button class="icon-button" id="toggle-insights" aria-label="Toggle right sidebar" title="Show / hide graph sidebar"><svg><use href="#i-graph"/></svg></button>
         <button class="icon-button" id="focus-button" aria-label="Focus mode" title="Focus mode"><svg><use href="#i-maximize"/></svg></button>
         <button class="icon-button" id="more-button" aria-label="Note actions" title="Note actions"><svg><use href="#i-more"/></svg></button>
       </div>
       <div class="editor-scroll" id="editor-scroll">
         <div class="editor-content">
           <div class="editor-eyebrow" id="editor-eyebrow">PERSONAL JOURNAL <span>—</span> <span id="date-display"></span></div>
-          <input id="note-title" class="note-title-input" aria-label="Note title" placeholder="Untitled" spellcheck="false" />
+          <input id="note-title" class="note-title-input" dir="auto" aria-label="Note title" placeholder="Untitled" spellcheck="false" />
           <div class="under-title"><span class="under-line"></span><span id="note-updated">Write something worth remembering.</span></div>
-          <div id="rich-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="Note content" aria-multiline="true" data-placeholder="Start writing..." spellcheck="true"></div>
+          <div id="rich-editor" class="rich-editor" dir="auto" contenteditable="true" role="textbox" aria-label="Note content" aria-multiline="true" data-placeholder="Start writing..." spellcheck="true"></div>
           <div class="editor-bottom-space"></div>
         </div>
       </div>
@@ -105,21 +104,11 @@
       </div>
       <footer class="editor-footer"><span id="word-count">0 words</span><span class="footer-separator">•</span><span id="character-count">0 characters</span><span class="footer-spacer"></span><span id="format-label">Rich text · Autosaved</span><span class="footer-separator">•</span><span class="footer-aa">Aa</span></footer>
     </main>
-    <aside class="insights" id="insights" aria-label="Connected notes">
-      <div class="insights-tabs">
-        <button class="insights-tab active" data-panel="graph" title="Graph view"><svg><use href="#i-graph"/></svg></button>
-        <button class="insights-tab" data-panel="backlinks" title="Backlinks"><svg><use href="#i-list"/></svg></button>
-        <button class="insights-tab" data-panel="calendar" title="Note details"><svg><use href="#i-calendar"/></svg></button>
-        <button class="insights-close" id="close-insights" title="Hide panel"><svg><use href="#i-x"/></svg></button>
-      </div>
-      <div id="insights-content" class="insights-scroll"></div>
-      <button class="insights-hide-button" id="hide-insights" type="button">‹ &nbsp; Hide sidebar</button>
-    </aside>
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="mobile-nav-btn active" data-mobile="notes" aria-label="Notes"><svg><use href="#i-file"/></svg><span>Notes</span></button>
-      <button class="mobile-nav-btn" data-mobile="graph" aria-label="Graph view"><svg><use href="#i-graph"/></svg><span>Graph</span></button>
-      <button class="mobile-nav-btn" data-mobile="backlinks" aria-label="Backlinks"><svg><use href="#i-link"/></svg><span>Links</span></button>
+      <button class="mobile-nav-btn" data-mobile="star" aria-label="Favorites"><svg><use href="#i-star"/></svg><span>Favorites</span></button>
       <button class="mobile-nav-btn" data-mobile="search" aria-label="Search"><svg><use href="#i-search"/></svg><span>Search</span></button>
+      <button class="mobile-nav-btn" data-mobile="settings" aria-label="Settings"><svg><use href="#i-palette"/></svg><span>Settings</span></button>
       <button id="mobile-new" class="mobile-nav-btn mobile-create" aria-label="New note"><svg><use href="#i-plus"/></svg><span>New</span></button>
     </nav>
   </div>
@@ -134,7 +123,6 @@
   </div>
   <dialog class="modal" id="settings-modal" aria-labelledby="settings-title">
     <div class="modal-head"><div><span class="modal-kicker">MX NOTES</span><h2 id="settings-title">Your private writing space</h2></div><button class="icon-button" id="settings-close" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
-    <p class="modal-description">Notes save instantly on this device, and sync automatically to your private Cloudflare D1 database when connected.</p>
     <div class="cloud-state" id="cloud-state">Local-only mode</div>
     <section class="sync-verification" aria-label="Cloud sync verification">
       <div class="verify-header"><svg><use href="#i-shield"/></svg><span>SYNC VERIFICATION</span></div>
@@ -148,12 +136,12 @@
       <div><span class="settings-section-label">APPEARANCE</span><p>Writing theme</p><span id="theme-mode">Dark mode</span></div>
       <button class="appearance-button" id="settings-theme-toggle" type="button"><svg><use href="#i-sun"/></svg> Switch to light</button>
     </section>
+    <section class="font-setting" aria-label="Writing typography"><label class="font-setting-copy" for="writing-font"><span class="settings-section-label">TYPOGRAPHY</span><strong>Writing font</strong><small>For your notes, not the interface</small></label><select id="writing-font" aria-label="Writing font"><option value="system">Apple Notes · System</option><option value="obsidian">Obsidian · Inter</option><option value="reading">Reading · Serif</option></select></section>
     <div class="form-grid" id="cloud-login-fields"><label>Your private Cloudflare password<input id="owner-password" type="password" placeholder="Owner password" autocomplete="current-password"/></label></div>
     <div class="modal-actions"><button class="primary" id="sign-in">Unlock cloud vault</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
     <p class="form-feedback" id="auth-feedback" role="status"></p>
     <hr class="modal-rule"/>
     <h3>Backups & workspace</h3><div class="modal-actions"><button class="secondary" id="export-all"><svg><use href="#i-download"/></svg> Export backup</button><button class="secondary" id="import-all"><svg><use href="#i-upload"/></svg> Import backup</button><input id="import-file" type="file" accept="application/json,.json" hidden /></div>
-    <p class="fine-print">Private cloud: create a Cloudflare D1 database, bind it as <code>DB</code>, run <code>cloudflare/schema.sql</code>, and set two encrypted Pages secrets: <code>NOTES_PASSWORD</code> and <code>SESSION_SECRET</code>. There is no signup or third-party account in the app. Cloud sync begins after this setup.</p>
   </dialog>
   <dialog class="modal action-dialog" id="action-dialog" aria-labelledby="action-heading">
     <h2 id="action-heading">Edit</h2>

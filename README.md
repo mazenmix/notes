@@ -7,7 +7,10 @@ A polished private note-taking web app, combining **Obsidian-inspired type and l
 - Real horizontal multi-tab document navigation, click-to-open and close tabs
 - Smooth note and folder operations with right-click desktop context menus and long-press mobile menus
 - Rich text editing directly in the page (bold, italic, underline, heading, lists, checklist, links). No Markdown symbol codes or preview switch
-- Inter-based typography, crisp interactive SVG knowledge graph, backlinks, right sidebar hide/show
+- App-native right-click menus for notes, tabs and editor; translation of selected text opens Google Translate in a separate tab
+- Browser spellcheck with optional Shift + right-click native spelling suggestions
+- Adjustable Apple Notes system / Obsidian Inter / serif reading typography in Settings
+- Inter-based typography, full-width Arabic/English writing surface, collapsible folder groups and note previews
 - Desktop layout and mobile near-full-screen editor with compact navigation and formatting dock
 - Dark/light themes; local-first autosaving; JSON backup and HTML note exports
 - Cloudflare Pages Functions + owner-only password + D1 database cloud sync, ~1.45 s typing debounce and 12 s periodic checks
