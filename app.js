@@ -836,7 +836,7 @@
   function hydrateAssets(){
     const editor=$('rich-editor');
     for(const figure of editor.querySelectorAll('figure[data-asset-id]')){
-      const id=figure.dataset.assetId,kind=figure.dataset.kind,width=Number(figure.dataset.width)||440;
+      const id=figure.dataset.assetId,kind=figure.dataset.kind,width=Number(figure.dataset.width)||240;
       figure.style.width=Math.min(900,Math.max(160,width))+'px';
       if(kind==='image'){
         if(!resizedFigures.has(figure)&&typeof ResizeObserver==='function'){
@@ -862,13 +862,19 @@
       if(!figure.querySelector('[data-asset-controls]')){
         const tools=document.createElement('div');tools.dataset.assetControls='true';
         tools.contentEditable='false';
-        tools.innerHTML='<button type="button" data-asset-action="open" aria-label="Open attachment">↗</button>'+
-          (kind==='image'?'<button type="button" data-asset-action="shrink" aria-label="Make image smaller">−</button><button type="button" data-asset-action="grow" aria-label="Make image bigger">+</button>':'');
+        tools.innerHTML='<button type="button" data-asset-action="remove" aria-label="Remove attachment" title="Remove attachment">×</button>';
         figure.append(tools);
       }
     }
     for(const code of editor.querySelectorAll('pre[data-code-block]>code')){
       code.spellcheck=false;code.contentEditable='true';
+      const pre=code.closest('pre[data-code-block]');
+      if(pre&&!pre.querySelector('[data-code-controls]')){
+        const tools=document.createElement('div');tools.dataset.codeControls='true';
+        tools.contentEditable='false';
+        tools.innerHTML='<button type="button" data-code-action="remove" aria-label="Remove code block" title="Remove code block">×</button>';
+        pre.append(tools);
+      }
     }
   }
   function insertAtCursor(markup){
@@ -899,9 +905,9 @@
         const data=await uploadAttachment(file);
         const image=/^image\/(png|jpeg|webp|gif|avif)$/i.test(data.mime);
         const figure='<figure data-asset-id="'+esc(data.id)+'" data-kind="'+(image?'image':'file')+
-          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="440" contenteditable="false">'+
-          (image?'<img data-asset-image="'+esc(data.id)+'" alt="'+esc(data.name)+'">':'<span>📎 '+esc(data.name)+'</span>')+
-          '<figcaption>'+esc(data.name)+'</figcaption></figure><p><br></p>';
+          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="240" contenteditable="false">'+
+          (image?'<img data-asset-image="'+esc(data.id)+'" alt="Attached image">':'<span>📎 '+esc(data.name)+'</span>')+
+          (image?'':'<figcaption>'+esc(data.name)+'</figcaption>')+'</figure><p><br></p>';
         insertAtCursor(figure);showToast('Attached '+file.name);
       }catch(error){showToast(error.message);}
     }
@@ -914,16 +920,29 @@
     onEditorInput();
   }
   // Format source with a limited, sandbox-free tokenizer; no external CDN.
-  const codeKeywords=new Set(('abstract and as async await break case catch class const continue def default del do elif else enum except export extends false finally fn for from func function global go if import in interface is lambda let local new nil none not null of or package pass private protected public raise return self static struct super switch then throw true try type typeof unless until use using val var void while with yield').split(' '));
+  // Offline, language-neutral tokens for scripts, markup, SQL and JSON.
+  const codeKeywords=new Set(('abstract add after all alter and as async await break by case catch class const continue create database def default delete distinct do elif else enum except export extends false finally fn for from func function get global go group having if implements import in inner insert into interface is join lambda let limit local match module new nil none not null of on or order package pass private protected public raise return self select set static struct super switch table then throw true try type typeof union unique unless until update use using val var void when where while with yield').split(' '));
+  const codeBuiltins=new Set(('Array Boolean Date Error JSON Map Math Number Object Promise RegExp Set String Symbol console document fetch window navigator print len range open list dict int float str bool self this require process module exports echo printf alert setTimeout setInterval parseInt parseFloat True False None NULL').split(' '));
   function colorizeCode(code){
     const source=code.textContent.replace(/\u00a0/g,' ');
     if(source.length>45000)return;
-    const token=/\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][\w]*\b/g;
+    const token=/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|--[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|\b0x[0-9a-fA-F]+\b|\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b|@[\w-]+|\b[A-Za-z_$][\w$-]*\b|[+\-*\/%=<>!?&|~^]+/g;
     let out='',at=0;
     for(const match of source.matchAll(token)){
-      out+=esc(source.slice(at,match.index));const word=match[0];
-      const kind=/^(\/\/|#|\/\*)/.test(word)?'comment':/^[\"']/.test(word)?'string':
-        /^\d/.test(word)?'number':codeKeywords.has(word.toLowerCase())?'keyword':/^(true|false|null|none|nil)$/i.test(word)?'literal':null;
+      out+=esc(source.slice(at,match.index));
+      const word=match[0],before=source.slice(Math.max(0,match.index-3),match.index),after=source.slice(match.index+word.length);
+      const kind=/^(\/\/|#|\/\*|<!--|--)/.test(word)?'comment':
+        /^[\"'\x60]/.test(word)?(/^\s*:/.test(after)?'property':'string'):
+        /^(?:\d|0x)/i.test(word)?'number':
+        /^(?:true|false|null|none|nil|undefined)$/i.test(word)?'literal':
+        codeKeywords.has(word.toLowerCase())?'keyword':
+        codeBuiltins.has(word)?'builtin':
+        before.endsWith('<')||before.endsWith('</')?'tag':
+        word.startsWith('@')?'variable':
+        /^[A-Z][A-Za-z0-9_]*$/.test(word)?'type':
+        /^\s*\(/.test(after)?'function':
+        /^\s*:/.test(after)?'property':
+        /^[+\-*\/%=<>!?&|~^]+$/.test(word)?'operator':null;
       out+=kind?'<span data-token="'+kind+'">'+esc(word)+'</span>':esc(word);
       at=match.index+word.length;
     }
@@ -936,14 +955,16 @@
         colorizeCode(code);
     });
   }
-  async function insertCodeBlock(){
+  function insertCodeBlock(){
     saveSelection();
-    const answer=await ask('Insert code block','Language: javascript, typescript, python, html, css, json, sql, bash, etc.','javascript');
-    if(answer===null)return;
-    const lang=/^[a-z+#]{1,20}$/.test(answer.trim().toLowerCase())?answer.trim().toLowerCase():'text';
-    insertAtCursor('<pre data-code-block="1" data-language="'+esc(lang)+'"><code contenteditable="true" spellcheck="false">\n</code></pre><p><br></p>');
-    const code=[...$('rich-editor').querySelectorAll('pre[data-code-block] code')].at(-1);
-    if(code){code.focus();const range=document.createRange();range.selectNodeContents(code);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}
+    insertAtCursor('<pre data-code-block="1" data-language="auto"><code contenteditable="true" spellcheck="false"><br></code></pre><p><br></p>');
+    const code=[...$('rich-editor').querySelectorAll('pre[data-code-block]>code')].at(-1);
+    if(code){
+      code.focus({preventScroll:true});
+      const selection=window.getSelection(),range=document.createRange();
+      range.selectNodeContents(code);range.collapse(false);
+      selection.removeAllRanges();selection.addRange(range);saveSelection();
+    }
   }
   async function insertTable(){
     saveSelection();
