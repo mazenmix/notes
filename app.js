@@ -930,7 +930,7 @@
     {ico:'search',label:'Find in this note',action:'find-note'}
   ];
   function selectFolder(folder){openFolder(folder);}
-  function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
+  function setFilter(next){filter=next;search='';$('search').value='';if(next==='trash')notesCollapsed=false;saveUi();renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||['inbox','notes'].includes(newName.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===newName.toLocaleLowerCase())){showToast('Choose a unique folder name');return;}
     state.folders=state.folders.map(f=>f===old?newName:f);pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
@@ -1454,7 +1454,9 @@
       const b=e.target.closest('[data-note-id]');if(b)openNote(b.dataset.noteId);
     });
     $('toggle-notes-list').addEventListener('click',()=>{
-      notesCollapsed=!notesCollapsed;saveUi();renderSidebar();
+      if(filter==='trash'){filter='all';notesCollapsed=false;}
+      else notesCollapsed=!notesCollapsed;
+      saveUi();renderSidebar();
     });
     $('open-tabs').addEventListener('click',e=>{
       const close=e.target.closest('[data-close-tab]');if(close){closeTab(close.dataset.closeTab);return;}
