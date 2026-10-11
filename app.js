@@ -9,7 +9,7 @@
   const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',AUTOCORRECT='mxnotes.writing.autocorrect',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
-    version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
+    version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',folderParents:{},folderOrder:[],noteOrder:{},organizationUpdatedAt:'2025-01-01T00:00:00.000Z',
     folders:[],
     notes:[
       {id:'welcome',title:'A calmer mind',folder:'Life',html:'<h2>Thoughts on a simpler life</h2><p>Lately I’ve been thinking a lot about how much calmer life feels when things are simple. Not easier, but simpler. Fewer tabs, fewer commitments, fewer things fighting for my attention.</p><p>It’s not about doing less, but about making space for what actually matters.</p><ul><li>More time for deep work</li><li>A cleaner headspace</li><li>People who feel like home</li><li>A life that feels intentional</li></ul><blockquote>Simplicity is not the absence of things, but the presence of what matters.</blockquote><h2>Related</h2><p>Keep the ideas connected: <a data-note-id="habits">Habits</a> · <a data-note-id="focus">Focus</a> · <a data-note-id="morning">A better morning</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
@@ -88,15 +88,39 @@
     if(!x||!Array.isArray(x.notes))throw Error('Invalid backup');
     const lookup={};
     for(const n of x.notes){if(n?.title && typeof n.id==='string')lookup[String(n.title).trim().toLocaleLowerCase()]=n.id;}
-    return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),foldersUpdatedAt:typeof x.foldersUpdatedAt==='string'?x.foldersUpdatedAt:(x.updatedAt||stamp()),
-      folders:[...new Set((Array.isArray(x.folders)?x.folders:[]).filter(v=>typeof v==='string'&&v.length<100))],
-      notes:x.notes.filter(n=>n&&typeof n.id==='string').slice(0,15000).map(n=>({
-        id:n.id,title:String(n.title||'Untitled').slice(0,400),
-        folder:String(n.folder||'Inbox').slice(0,100),
-        html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
-        updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
-        starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
-      }))
+    const folders=[...new Set([...(Array.isArray(x.folders)?x.folders:[]),...x.notes.map(n=>n?.folder)].filter(v=>typeof v==='string'&&v.length<100&&v!=='Inbox'))];
+    const folderSet=new Set(folders);
+    const parents={};
+    if(x.folderParents&&typeof x.folderParents==='object'&&!Array.isArray(x.folderParents)){
+      for(const child of folders){
+        const parent=x.folderParents[child];
+        if(typeof parent==='string'&&parent!==child&&folderSet.has(parent))parents[child]=parent;
+      }
+      // Invalid backups cannot create cyclic directory trees.
+      for(const child of folders){
+        const visited=new Set([child]);let parent=parents[child];
+        while(parent){if(visited.has(parent)){delete parents[child];break;}visited.add(parent);parent=parents[parent];}
+      }
+    }
+    const order=[...new Set([...(Array.isArray(x.folderOrder)?x.folderOrder:[]).filter(v=>typeof v==='string'&&folderSet.has(v)),...folders])];
+    const notes=x.notes.filter(n=>n&&typeof n.id==='string').slice(0,15000).map(n=>({
+      id:n.id,title:String(n.title||'Untitled').slice(0,400),
+      folder:String(n.folder||'Inbox').slice(0,100),
+      html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
+      updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
+      starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
+    }));
+    const noteIds=new Set(notes.map(n=>n.id)),noteOrder={};
+    if(x.noteOrder&&typeof x.noteOrder==='object'&&!Array.isArray(x.noteOrder)){
+      for(const [folder,values] of Object.entries(x.noteOrder)){
+        if((folder==='Inbox'||folderSet.has(folder))&&Array.isArray(values))
+          noteOrder[folder]=[...new Set(values.filter(id=>typeof id==='string'&&noteIds.has(id)))];
+      }
+    }
+    return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),
+      foldersUpdatedAt:typeof x.foldersUpdatedAt==='string'?x.foldersUpdatedAt:(x.updatedAt||stamp()),
+      organizationUpdatedAt:typeof x.organizationUpdatedAt==='string'?x.organizationUpdatedAt:(x.foldersUpdatedAt||x.updatedAt||stamp()),
+      folders,folderParents:parents,folderOrder:order,noteOrder,notes
     };
   }
   let state;
@@ -122,7 +146,8 @@
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
   let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
-  let draggingFolder=null;
+  let collapsedPinnedFolders=new Set(Array.isArray(ui.collapsedPinnedFolders)?ui.collapsedPinnedFolders:[]);
+  let draggingFolder=null,draggedItem=null,dragTarget=null,dragHoverTimer=null;
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
   const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
@@ -135,6 +160,34 @@
   const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived&&!n.purged);
   const findNote=id=>state.notes.find(n=>n.id===id);
   const folderLabel=name=>name==='Inbox'?'Notes':name;
+  const folderParent=name=>state.folderParents?.[name]||null;
+  const folderChildren=parent=>(state.folderOrder||state.folders).filter(f=>state.folders.includes(f)&&folderParent(f)===parent);
+  const folderDescends=(name,ancestor)=>{
+    for(let p=folderParent(name),seen=new Set();p&&!seen.has(p);p=folderParent(p)){
+      if(p===ancestor)return true;
+      seen.add(p);
+    }
+    return false;
+  };
+  function folderLabelPath(folder){
+    let output=[folderLabel(folder)],seen=new Set([folder]);
+    for(let p=folderParent(folder);p&&!seen.has(p);p=folderParent(p)){output.unshift(p);seen.add(p);}
+    return output.join(' / ');
+  }
+  function sortFolderNotes(notes,folder){
+    const custom=state.noteOrder?.[folder]||[];
+    const lookup=new Map(custom.map((id,i)=>[id,i]));
+    return [...notes].sort((a,b)=>{
+      const ai=lookup.get(a.id),bi=lookup.get(b.id);
+      if(ai!==undefined&&bi!==undefined)return ai-bi;
+      if(ai!==undefined)return -1;if(bi!==undefined)return 1;
+      return Date.parse(b.updatedAt)-Date.parse(a.updatedAt);
+    });
+  }
+  function markOrganizationChanged(){
+    state.organizationUpdatedAt=stamp();state.foldersUpdatedAt=state.organizationUpdatedAt;persist();
+  }
+
   const timeAgo=date=>{
     const seconds=Math.max(0,Math.floor((Date.now()-Date.parse(date||stamp()))/1000));
     if(seconds<45)return 'just now';if(seconds<3600)return Math.floor(seconds/60)+'m ago';
@@ -143,7 +196,7 @@
   const plain=html=>{const d=document.createElement('div');d.innerHTML=safeHtml(html);return d.innerText||d.textContent||'';};
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
-  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,lastClosedTab}));}
+  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,collapsedPinnedFolders:[...collapsedPinnedFolders],lastClosedTab}));}
   function persist(remote=true){
     pristine=false;
     state.updatedAt=stamp();
@@ -227,15 +280,32 @@
   }
   function renderSidebar(){
     pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
-    const folders=pinnedFolders,live=visible();
+    const live=visible(),pinSet=new Set(pinnedFolders),parent=name=>folderParent(name);
+    const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name));
+    const renderPinned=(folder,depth=0,seen=new Set())=>{
+      if(seen.has(folder)||depth>12)return '';
+      const visited=new Set(seen);visited.add(folder);
+      const children=sortedFolders.filter(f=>pinSet.has(f)&&parent(f)===folder);
+      const isCollapsed=collapsedPinnedFolders.has(folder);
+      return '<div class="folder-tree-node" data-tree-folder="'+esc(folder)+'" style="--folder-depth:'+depth+'">'+
+        '<div class="pinned-folder-row '+(activeTab===folderKey(folder)?'active':'')+'" data-drag-folder="'+esc(folder)+'" draggable="true" title="Drag to nest or reorder">'+
+          '<span class="folder-drag-handle" title="Move folder" aria-hidden="true">⠿</span>'+
+          (children.length?'<button class="folder-twisty '+(isCollapsed?'collapsed':'')+'" data-toggle-pin="'+esc(folder)+'" aria-expanded="'+(!isCollapsed)+'" title="Expand folder">'+icon('chevron')+'</button>':'<span class="folder-twisty-placeholder"></span>')+
+          '<button class="folder-item '+(activeTab===folderKey(folder)?'active':'')+'" data-folder="'+esc(folder)+'" title="Open folder">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(folder)+'</span><span class="count">'+live.filter(n=>n.folder===folder).length+'</span></button>'+
+          '<button class="folder-rename-btn" data-rename-folder="'+esc(folder)+'" title="Rename folder" aria-label="Rename '+esc(folder)+'">'+icon('edit')+'</button>'+
+        '</div>'+
+        (children.length&&!isCollapsed?'<div class="folder-tree-children">'+children.map(c=>renderPinned(c,depth+1,visited)).join('')+'</div>':'')+
+      '</div>';
+    };
+    const pinnedRoots=sortedFolders.filter(f=>pinSet.has(f)&&!pinSet.has(parent(f)));
+    $('folder-list').innerHTML=pinnedRoots.map(f=>renderPinned(f)).join('');
     const quick=[['inbox','Notes','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
       ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted&&!n.purged).length],
-      ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
+      ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'" data-drag-folder="'+esc(f)+'" draggable="true" title="Drag to reorder"><span class="folder-drag-handle" aria-hidden="true">⠿</span><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
@@ -245,26 +315,32 @@
       const q=search.toLocaleLowerCase();
       notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
     }
-    notes.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
     $('notes-total').textContent=notes.length;
     $('toggle-notes-list').setAttribute('aria-expanded',String(!notesCollapsed));
     $('toggle-notes-list').classList.toggle('collapsed',notesCollapsed);
     if(notesCollapsed){$('note-list').innerHTML='';return;}
-    const renderNote=n=>'<div class="note-row"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · right-click for actions">'+icon('file')+
+    const renderNote=n=>'<div class="note-row" data-drag-note="'+esc(n.id)+'" draggable="true" title="Drag into a folder or between notes"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · drag to move">'+icon('file')+
       '<span class="note-name" dir="auto">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button></div>';
     const groupMap=new Map();
     for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
-    const ordered=[...groupMap.entries()].sort((a,b)=>{
-      const ai=['Inbox',...pinnedFolders,...state.folders].indexOf(a[0]),bi=['Inbox',...pinnedFolders,...state.folders].indexOf(b[0]);
-      return (ai<0?999:ai)-(bi<0?999:bi);
-    });
-    $('note-list').innerHTML=ordered.length?ordered.map(([folder,items])=>{
+    const foldersWithContent=new Set(groupMap.keys()),fullOrder=['Inbox',...sortedFolders];
+    const groupFolders=[...new Set([...fullOrder,...groupMap.keys()])].filter(f=>foldersWithContent.has(f));
+    const renderGroup=(folder,depth=0,seen=new Set())=>{
+      if(seen.has(folder)||depth>12)return '';
+      const visited=new Set(seen);visited.add(folder);
+      const items=sortFolderNotes(groupMap.get(folder)||[],folder);
       const folded=collapsedGroups.has(folder);
-      return '<section class="note-group"><button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
-        '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
-        (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:4).map(renderNote).join('')+
-          (items.length>4?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+'</div>')+'</section>';
-    }).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
+      const children=groupFolders.filter(f=>f!=='Inbox'&&parent(f)===folder);
+      return '<section class="note-group" data-note-group="'+esc(folder)+'" style="--group-depth:'+depth+'">'+
+        '<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="'+(folder!=='Inbox')+'" aria-expanded="'+(!folded)+'" title="Drag this folder onto another to nest · drop a note to move it">'+icon('chevron')+
+          '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
+        (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:6).map(renderNote).join('')+
+           (items.length>6?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+
+           children.map(c=>renderGroup(c,depth+1,visited)).join('')+'</div>')+
+      '</section>';
+    };
+    const roots=groupFolders.filter(f=>f==='Inbox'||!foldersWithContent.has(parent(f)));
+    $('note-list').innerHTML=roots.length?roots.map(f=>renderGroup(f)).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
   }
   function updateSummary(){
     const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
@@ -273,7 +349,7 @@
     $('character-count').textContent=text.length.toLocaleString()+' characters';
   }
   function renderFolderView(folder){
-    const all=visible().filter(n=>n.folder===folder).sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
+    const all=sortFolderNotes(visible().filter(n=>n.folder===folder),folder);
     const titled=all.filter(n=>n.title.trim().toLocaleLowerCase()!=='untitled');
     const drafts=all.filter(n=>n.title.trim().toLocaleLowerCase()==='untitled');
     const card=n=>'<button class="folder-note-card" data-folder-note="'+esc(n.id)+'"><span class="folder-card-icon">'+icon('file')+'</span><span class="folder-card-detail"><strong dir="auto">'+esc(n.title)+'</strong><small dir="auto">'+esc(plain(n.html).trim().slice(0,100)||'Empty note')+'</small></span><time>'+esc(timeAgo(n.updatedAt))+'</time></button>';
@@ -559,6 +635,8 @@
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
+    {ico:'folder',label:'New subfolder',action:'folder-subfolder'},
+    ...(folderParent(folder)?[{ico:'folder',label:'Move folder to top level',action:'folder-to-root'}]:[]),
     {ico:'edit',label:'Rename folder',action:'folder-rename'},
     {ico:'folder',label:'Open folder',action:'folder-open'},
     {divider:true},
@@ -848,7 +926,15 @@
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||['inbox','notes'].includes(newName.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===newName.toLocaleLowerCase())){showToast('Choose a unique folder name');return;}
-    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
+    state.folders=state.folders.map(f=>f===old?newName:f);pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
+    state.folderOrder=state.folderOrder.map(f=>f===old?newName:f);
+    const oldParents=state.folderParents||{},nextParents={};
+    for(const [key,value] of Object.entries(oldParents))nextParents[key===old?newName:key]=value===old?newName:value;
+    state.folderParents=nextParents;
+    const orders={...state.noteOrder};
+    if(Object.hasOwn(orders,old)){orders[newName]=orders[old];delete orders[old];}
+    state.noteOrder=orders;
+    if(collapsedPinnedFolders.delete(old))collapsedPinnedFolders.add(newName);
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
     tabs=tabs.map(id=>id===folderKey(old)?folderKey(newName):id);
@@ -856,12 +942,20 @@
     if(lastClosedTab===folderKey(old))lastClosedTab=folderKey(newName);
     if(collapsedGroups.delete(old))collapsedGroups.add(newName);
     if(showAllGroups.delete(old))showAllGroups.add(newName);
-    persist();saveUi();renderAll();showToast('Folder renamed');
+    markOrganizationChanged();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
-    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    state.folders=state.folders.filter(f=>f!==folder);pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    state.folderOrder=state.folderOrder.filter(f=>f!==folder);
+    const parents={...state.folderParents};
+    for(const [child,parent] of Object.entries(parents))if(parent===folder)delete parents[child];
+    delete parents[folder];state.folderParents=parents;
+    const ordered={...state.noteOrder};delete ordered[folder];state.noteOrder=ordered;
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
-    if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Notes');
+    if(filter==='folder:'+folder)filter='inbox';
+    tabs=tabs.filter(id=>id!==folderKey(folder));
+    if(activeTab===folderKey(folder))activeTab=selected;
+    markOrganizationChanged();saveUi();renderAll();showToast('Notes moved to Notes; subfolders retained');
   }
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
@@ -899,7 +993,7 @@
       case 'rename-note':if(n){openNote(n.id);focusNoteHeading(true);}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
-      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
+      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}if(moveNote(n.id,f))showToast('Note moved');}break;
       case 'copy-note-link':if(n){await navigator.clipboard.writeText('[['+n.title+']]');showToast('Note link copied');}break;
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
       case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
@@ -916,12 +1010,27 @@
       }break;
       case 'export-note':if(n)exportNote(n);break;
       case 'folder-new':newNote(folder);break;
+      case 'folder-subfolder':{
+        const name=await ask('New subfolder','Folder name inside '+folder);
+        if(!name?.trim())break;
+        const value=name.trim().slice(0,90);
+        if(['notes','inbox'].includes(value.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===value.toLocaleLowerCase())){
+          showToast('Choose a unique folder name');break;
+        }
+        state.folders.push(value);
+        state.folderParents={...state.folderParents,[value]:folder};
+        state.folderOrder=[...state.folderOrder,value];
+        pinnedFolders.push(value);collapsedPinnedFolders.delete(folder);
+        if(!pinnedFolders.includes(folder))pinnedFolders.push(folder);
+        markOrganizationChanged();saveUi();renderSidebar();showToast('Subfolder created');
+      }break;
+      case 'folder-to-root':if(folderParent(folder)&&moveFolder(folder,'Inbox','inside'))showToast('Moved to top level');break;
       case 'folder-open':selectFolder(folder);break;
       case 'folder-rename':{
         const name=await ask('Rename folder','New folder name',folder);
         if(name!==null)folderRename(folder,name.trim());
       }break;
-      case 'folder-delete':if(await confirmAction('Delete folder?','Notes in this folder will move to Inbox.'))removeFolder(folder);break;
+      case 'folder-delete':if(await confirmAction('Delete folder?','Notes in this folder will move to Notes. Nested subfolders will remain at the top level.'))removeFolder(folder);break;
       case 'focus':toggleFocus();break;
       case 'edit-copy':case 'edit-cut':case 'edit-paste':case 'edit-replace':case 'edit-select-all':case 'edit-bold':case 'edit-italic':case 'translate-ar':case 'translate-en':case 'spellcheck-help':case 'find-note':await runEditAction(action,context);break;
       case 'sync':await syncNow();break;
@@ -1060,10 +1169,15 @@
       const found=merged.get(n.id);
       if(!found || Date.parse(n.updatedAt)>=Date.parse(found.updatedAt))merged.set(n.id,n);
     }
-    const folders=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt)?local.folders:r.folders;
+    const localFoldersWin=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt);
+    const folders=localFoldersWin?local.folders:r.folders;
     const foldersUpdatedAt=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt)?local.foldersUpdatedAt:r.foldersUpdatedAt;
-    return {version:3,notes:[...merged.values()],folders,foldersUpdatedAt,updatedAt:
-      Date.parse(local.updatedAt)>Date.parse(r.updatedAt)?local.updatedAt:r.updatedAt};
+    const orgLocal=Date.parse(local.organizationUpdatedAt||'')>=Date.parse(r.organizationUpdatedAt||'');
+    const org=orgLocal?local:r;
+    return normalize({version:3,notes:[...merged.values()],folders,foldersUpdatedAt,
+      folderParents:org.folderParents,folderOrder:org.folderOrder,noteOrder:org.noteOrder,
+      organizationUpdatedAt:org.organizationUpdatedAt,updatedAt:
+      Date.parse(local.updatedAt)>Date.parse(r.updatedAt)?local.updatedAt:r.updatedAt});
   }
   function scheduleSync(){
     if(!ownerActive){makeSavedStatus('Saved locally · Unlock cloud');return;}
@@ -1120,7 +1234,7 @@
       revision=response.revision||0;
       if(response.workspace){
         const merged=pristine?normalize(response.workspace):mergeWorkspaces(state,response.workspace);
-        if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)){
+        if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)||JSON.stringify(merged.folderParents)!==JSON.stringify(state.folderParents)||JSON.stringify(merged.folderOrder)!==JSON.stringify(state.folderOrder)||JSON.stringify(merged.noteOrder)!==JSON.stringify(state.noteOrder)){
           state=merged;pristine=false;localStorage.setItem(STORE,JSON.stringify(state));
           if(!isEditing)renderAll();
           dirty=JSON.stringify(merged)!==JSON.stringify(response.workspace);
@@ -1153,56 +1267,126 @@
     $('quick-links').addEventListener('click',e=>{
       const b=e.target.closest('[data-filter]');if(b){if(b.dataset.filter==='inbox')openFolder('Inbox');else setFilter(b.dataset.filter);}
     });
-    const folderList=$('folder-list');
+    const sidebar=$('side-scroll'),folderList=$('folder-list');
     const clearDragHints=()=>{
-      folderList.querySelectorAll('.dragging,.drop-before,.drop-after').forEach(x=>x.classList.remove('dragging','drop-before','drop-after'));
+      sidebar.querySelectorAll('.dragging,.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('dragging','drop-before','drop-after','drop-inside'));
+      clearTimeout(dragHoverTimer);dragHoverTimer=null;dragTarget=null;
     };
-    folderList.addEventListener('dragstart',e=>{
-      const row=e.target.closest('[data-drag-folder]');
-      if(!row||e.target.closest('[data-rename-folder]')){e.preventDefault();return;}
-      draggingFolder=row.dataset.dragFolder;
-      e.dataTransfer.effectAllowed='move';
-      e.dataTransfer.setData('text/plain',draggingFolder);
-      requestAnimationFrame(()=>row.classList.add('dragging'));
-    });
-    folderList.addEventListener('dragover',e=>{
-      const target=e.target.closest('[data-drag-folder]');
-      if(!draggingFolder||!target||target.dataset.dragFolder===draggingFolder)return;
-      e.preventDefault();e.dataTransfer.dropEffect='move';
-      clearDragHints();
-      const before=e.clientY<target.getBoundingClientRect().top+target.offsetHeight/2;
-      target.classList.add(before?'drop-before':'drop-after');
-    });
-    folderList.addEventListener('drop',e=>{
-      const target=e.target.closest('[data-drag-folder]');
-      if(!draggingFolder||!target){clearDragHints();draggingFolder=null;return;}
-      e.preventDefault();
-      const moving=draggingFolder,destination=target.dataset.dragFolder;
-      const before=e.clientY<target.getBoundingClientRect().top+target.offsetHeight/2;
-      clearDragHints();draggingFolder=null;
-      if(moving===destination)return;
-      const next=pinnedFolders.filter(name=>name!==moving);
-      const at=next.indexOf(destination);
-      if(at<0)return;
-      const oldPositions=new Map([...folderList.querySelectorAll('[data-drag-folder]')]
-        .map(row=>[row.dataset.dragFolder,row.getBoundingClientRect().top]));
-      next.splice(at+(before?0:1),0,moving);
-      pinnedFolders=next;saveUi();renderSidebar();
-      if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
-        folderList.querySelectorAll('[data-drag-folder]').forEach(row=>{
-          const old=oldPositions.get(row.dataset.dragFolder);
-          if(old===undefined)return;
-          const delta=old-row.getBoundingClientRect().top;
-          if(Math.abs(delta)>1)row.animate?.([
-            {transform:'translateY('+delta+'px)'},{transform:'translateY(0)'}
-          ],{duration:255,easing:'cubic-bezier(.2,.75,.25,1)'});
-        });
+    const hoveredTarget=e=>{
+      const row=e.target.closest('[data-drag-folder]'),
+        group=e.target.closest('[data-drop-folder]'),
+        note=e.target.closest('[data-drag-note]'),
+        inbox=e.target.closest('[data-filter="inbox"]');
+      if(row)return {node:row,type:'folder',id:row.dataset.dragFolder};
+      if(group)return {node:group,type:'folder',id:group.dataset.dropFolder};
+      if(note)return {node:note,type:'note',id:note.dataset.dragNote};
+      if(inbox)return {node:inbox,type:'folder',id:'Inbox'};
+      return null;
+    };
+    function getDragLocation(event,target){
+      const bounds=target.node.getBoundingClientRect(),ratio=(event.clientY-bounds.top)/Math.max(1,bounds.height);
+      if(draggedItem?.type==='note'){
+        if(target.type==='folder')return 'inside';
+        return ratio<.5?'before':'after';
       }
-      showToast('Folder order saved');
+      if(target.type==='note')return null;
+      if(target.id==='Inbox')return 'inside';
+      return ratio<.25?'before':ratio>.75?'after':'inside';
+    }
+    function validDrop(target,placement){
+      if(!draggedItem||!placement||!target)return false;
+      if(draggedItem.type==='folder'){
+        if(target.type!=='folder'||target.id===draggedItem.id)return false;
+        if(target.id!=='Inbox'&&folderDescends(target.id,draggedItem.id))return false;
+        if(placement!=='inside'&&target.id==='Inbox')return false;
+        return true;
+      }
+      const source=findNote(draggedItem.id);
+      return !!source&&!source.deleted&&!source.purged&&!(target.type==='note'&&target.id===draggedItem.id);
+    }
+    function moveFolder(name,destination,placement){
+      if(!state.folders.includes(name)||(!state.folders.includes(destination)&&destination!=='Inbox'))return false;
+      if(name===destination||folderDescends(destination,name))return false;
+      const parent=placement==='inside'?(destination==='Inbox'?null:destination):folderParent(destination);
+      if(parent===name||folderDescends(parent,name))return false;
+      state.folderParents={...state.folderParents};
+      if(parent)state.folderParents[name]=parent;else delete state.folderParents[name];
+      const order=state.folderOrder.filter(x=>x!==name);
+      if(placement==='inside'){
+        const after=order.indexOf(destination);
+        order.splice(after<0?order.length:after+1,0,name);
+        collapsedPinnedFolders.delete(destination);
+      }else{
+        const at=order.indexOf(destination);
+        order.splice(at<0?order.length:at+(placement==='after'?1:0),0,name);
+      }
+      state.folderOrder=order;
+      if(!pinnedFolders.includes(name))pinnedFolders.push(name);
+      if(parent&&!pinnedFolders.includes(parent))pinnedFolders.push(parent);
+      markOrganizationChanged();saveUi();renderSidebar();
+      return true;
+    }
+    function moveNote(noteId,destination,placement='inside'){
+      const note=findNote(noteId);if(!note||note.deleted||note.purged)return false;
+      const targetNote=placement==='before'||placement==='after'?findNote(destination):null;
+      const folder=targetNote?targetNote.folder:destination;
+      if(folder!=='Inbox'&&!state.folders.includes(folder))return false;
+      const destinationNotes=sortFolderNotes(visible().filter(n=>n.folder===folder&&n.id!==noteId),folder).map(n=>n.id);
+      if(targetNote){
+        const index=destinationNotes.indexOf(destination);
+        if(index<0)return false;
+        destinationNotes.splice(index+(placement==='after'?1:0),0,noteId);
+      }else destinationNotes.unshift(noteId);
+      state.noteOrder={...state.noteOrder};
+      for(const [key,ids] of Object.entries(state.noteOrder))state.noteOrder[key]=ids.filter(id=>id!==noteId);
+      state.noteOrder[folder]=destinationNotes;
+      if(note.folder!==folder){note.folder=folder;note.updatedAt=stamp();}
+      notesCollapsed=false;collapsedGroups.delete(folder);showAllGroups.add(folder);
+      if(filter.startsWith('folder:')&&filter.slice(7)!==folder)filter='all';
+      markOrganizationChanged();saveUi();renderAll();
+      return true;
+    }
+    sidebar.addEventListener('dragstart',e=>{
+      const folder=e.target.closest('[data-drag-folder]'),note=e.target.closest('[data-drag-note]');
+      if(!folder&&!note)return;
+      if(folder&&e.target.closest('[data-rename-folder],[data-toggle-pin]')){e.preventDefault();return;}
+      draggedItem=folder?{type:'folder',id:folder.dataset.dragFolder}:{type:'note',id:note.dataset.dragNote};
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',draggedItem.type+':'+draggedItem.id);
+      requestAnimationFrame(()=>(folder||note).classList.add('dragging'));
     });
-    folderList.addEventListener('dragend',()=>{draggingFolder=null;clearDragHints();});
+    sidebar.addEventListener('dragover',e=>{
+      if(!draggedItem)return;
+      const target=hoveredTarget(e),placement=target&&getDragLocation(e,target);
+      if(!validDrop(target,placement)){sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside'));return;}
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      const signature=target.type+':'+target.id+':'+placement;
+      if(dragTarget!==signature){
+        clearTimeout(dragHoverTimer);dragHoverTimer=null;
+        dragTarget=signature;
+
+      }
+      sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside'));
+      target.node.classList.add('drop-'+placement);
+    });
+    sidebar.addEventListener('drop',e=>{
+      if(!draggedItem)return;
+      const target=hoveredTarget(e),placement=target&&getDragLocation(e,target);
+      if(!validDrop(target,placement)){draggedItem=null;clearDragHints();return;}
+      e.preventDefault();
+      const dragged=draggedItem;draggedItem=null;clearDragHints();
+      const success=dragged.type==='folder'?moveFolder(dragged.id,target.id,placement):moveNote(dragged.id,target.id,placement);
+      if(success){skipClickUntil=Date.now()+250;showToast(dragged.type==='folder'?'Folder organized':'Note moved');}
+    });
+    sidebar.addEventListener('dragend',()=>{draggedItem=null;clearDragHints();});
     folderList.addEventListener('click',async e=>{
       if(Date.now()<skipClickUntil)return;
+      const toggle=e.target.closest('[data-toggle-pin]');
+      if(toggle){const folder=toggle.dataset.togglePin;
+        if(collapsedPinnedFolders.has(folder))collapsedPinnedFolders.delete(folder);
+        else collapsedPinnedFolders.add(folder);
+        saveUi();renderSidebar();return;
+      }
       const rename=e.target.closest('[data-rename-folder]');
       if(rename){
         const folder=rename.dataset.renameFolder;
@@ -1245,12 +1429,12 @@
       if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
-      const folder=e.target.closest('[data-folder],[data-rename-folder]');
+      const folder=e.target.closest('[data-folder],[data-rename-folder],[data-group-toggle]');
       const trash=e.target.closest('[data-filter="trash"]');
       const editor=e.target.closest('#rich-editor,#note-title');
       const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
       if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
-      if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder;
+      if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder||folder.dataset.groupToggle;
         showMenu(e.clientX,e.clientY,folderOptions(name),{folder:name});return;}
       if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote;
         if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
@@ -1390,7 +1574,7 @@
         else showToast('Folder already pinned');
         openFolder(existing);return;
       }
-      state.folders.push(f);state.foldersUpdatedAt=stamp();pinnedFolders.push(f);persist();saveUi();selectFolder(f);
+      state.folders.push(f);state.folderOrder=[...state.folderOrder,f];pinnedFolders.push(f);markOrganizationChanged();saveUi();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
     $('open-sidebar').addEventListener('click',()=>openSidebar());
