@@ -911,38 +911,63 @@
     if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
     attachmentInsertion={noteId:note.id,range};
   }
+  // Always insert attachments as their own direct editor blocks. A browser's
+  // insertHTML can place noneditable <figure> inside a paragraph or next to
+  // another figure, causing side-by-side images or misplaced subsequent uploads.
   function insertAttachmentAtSavedCaret(markup){
     const bookmark=attachmentInsertion,note=bookmark&&findNote(bookmark.noteId);
     if(!note||note.deleted||note.purged){showToast('Original note unavailable');return false;}
-    // Never insert into another note if a tab was changed while uploading.
     if(current()?.id!==note.id){
       note.html=safeHtml((note.html||'')+markup);
       note.updatedAt=stamp();persist();renderSidebar();renderDesktopNotes();renderIos();
       return true;
     }
-    const editor=$('rich-editor'),range=bookmark.range;
+    const editor=$('rich-editor'),template=document.createElement('template');
+    template.innerHTML=markup;
+    const figure=template.content.querySelector('figure[data-asset-id]');
+    if(!figure)return false;
+    const spacer=document.createElement('p');
+    spacer.appendChild(document.createElement('br'));
     editor.focus({preventScroll:true});
-    if(range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)){
-      const sel=window.getSelection();
-      sel.removeAllRanges();sel.addRange(range.cloneRange());
-      const inserted=document.execCommand('insertHTML',false,markup);
-      if(!inserted){
-        const live=sel.getRangeAt(0);
-        live.deleteContents();
-        const fragment=live.createContextualFragment(markup),last=fragment.lastChild;
-        live.insertNode(fragment);
-        if(last){live.setStartAfter(last);live.collapse(true);sel.removeAllRanges();sel.addRange(live);}
+    const selection=window.getSelection(),stored=bookmark.range;
+    let range=stored&&editor.contains(stored.startContainer)&&editor.contains(stored.endContainer)?stored.cloneRange():null;
+    if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
+    if(!range.collapsed)range.deleteContents();
+    // Identify the top-level editor child containing the captured insertion point.
+    let top=range.startContainer;
+    if(top.nodeType===3)top=top.parentNode;
+    while(top&&top.parentNode!==editor&&top!==editor)top=top.parentNode;
+    if(top===editor){
+      const before=editor.childNodes[range.startOffset]||null;
+      editor.insertBefore(figure,before);
+      figure.after(spacer);
+    }else if(top&&top.parentNode===editor){
+      if(top.matches('figure,pre,table')||top.querySelector('figure[data-asset-id]')){
+        top.after(figure,spacer);
+      }else if(top.matches('p,div')&&!top.textContent.trim()&&!top.querySelector('img,br[data-checklist]')){
+        // Empty paragraph after the previous image: replace it so photos stack.
+        top.replaceWith(figure,spacer);
+      }else{
+        // Split the current text block at the caret and insert a standalone
+        // attachment between the leading/trailing text, without moving it to top.
+        const tail=range.cloneRange();
+        tail.setEnd(top,top.childNodes.length);
+        const remaining=tail.extractContents();
+        const hasTail=!!(remaining.textContent?.trim()||remaining.querySelector?.('img,figure,table,pre,br'));
+        const following=hasTail?top.cloneNode(false):null;
+        if(following)following.appendChild(remaining);
+        top.after(figure,spacer);
+        if(following)spacer.after(following);
       }
     }else{
-      // A re-render invalidated the Range: append to THIS note, not its top.
-      editor.insertAdjacentHTML('beforeend',markup);
-      const sel=window.getSelection(),end=document.createRange();
-      end.selectNodeContents(editor);end.collapse(false);
-      sel.removeAllRanges();sel.addRange(end);
+      editor.append(figure,spacer);
     }
-    const sel=window.getSelection();
-    if(sel?.rangeCount)bookmark.range=sel.getRangeAt(0).cloneRange();
-    hydrateAssets();onEditorInput();saveSelection();return true;
+    const after=document.createRange();
+    after.selectNodeContents(spacer);after.collapse(false);
+    selection.removeAllRanges();selection.addRange(after);
+    bookmark.range=after.cloneRange();
+    hydrateAssets();onEditorInput();saveSelection();
+    return true;
   }
   async function insertAttachments(files){
     if(!files?.length)return;
