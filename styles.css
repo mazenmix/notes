@@ -1586,3 +1586,48 @@ body[data-ios-layout="true"] .desktop-notes-panel{display:none!important}
   .rich-editor figure[data-asset-id] [data-asset-controls] button,
   .rich-editor pre[data-code-block] [data-code-controls] button{transition:none}
 }
+
+/* MX Note: delicate white outlines, intentionally gentle on dark surfaces */
+.rich-editor pre[data-code-block],
+.rich-editor pre[data-code-block]:hover,
+.rich-editor pre[data-code-block]:focus-within{
+  border:1px solid rgba(255,255,255,.68)!important;
+  border-radius:10px!important;
+  box-shadow:0 2px 12px rgba(0,0,0,.09)!important;
+  background:#182230!important;
+}
+.rich-editor pre[data-code-block]:focus-within{
+  border-color:rgba(255,255,255,.88)!important;
+}
+.rich-editor figure[data-asset-id][data-kind="image"],
+.rich-editor figure[data-asset-id][data-kind="image"]:hover,
+.rich-editor figure[data-asset-id][data-kind="image"].image-resizing{
+  box-sizing:border-box;
+  border:1px solid rgba(255,255,255,.62)!important;
+  border-radius:8px!important;
+  padding:2px!important;
+  box-shadow:0 2px 10px rgba(0,0,0,.08)!important;
+  background:transparent!important;
+  overflow:visible!important;
+}
+.rich-editor figure[data-asset-id][data-kind="image"]>img{
+  border-radius:5px!important;
+  display:block;
+  max-width:100%;
+}
+:root[data-theme="light"] .rich-editor pre[data-code-block],
+:root[data-theme="sepia"] .rich-editor pre[data-code-block]{
+  border-color:rgba(255,255,255,.88)!important;
+  box-shadow:0 0 0 1px rgba(36,53,68,.28)!important;
+}
+:root[data-theme="light"] .rich-editor figure[data-kind="image"],
+:root[data-theme="sepia"] .rich-editor figure[data-kind="image"],
+:root[data-theme="light"] .rich-editor figure[data-kind="image"]:hover,
+:root[data-theme="sepia"] .rich-editor figure[data-kind="image"]:hover{
+  border-color:rgba(95,112,130,.55)!important;
+  background:transparent!important;
+}
+@media(max-width:1100px),(any-pointer:coarse) and (max-width:1500px){
+  .rich-editor pre[data-code-block]{border-width:1px!important}
+  .rich-editor figure[data-asset-id][data-kind="image"]{border-width:1px!important}
+}
