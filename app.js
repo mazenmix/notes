@@ -183,7 +183,7 @@
   let expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
-  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f)):[];
+  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
   // Previous releases auto-pinned every folder. Switch once to explicit-only
   // pins without touching saved folders, notes or D1 workspace data.
   const EXPLICIT_PINS_KEY='mxnotes.pins.explicit.20261011';
@@ -379,10 +379,10 @@
     if(searchFocus)setTimeout(()=>$('search').focus(),60);
   }
   function renderSidebar(){
-    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f));
-    const live=visible(),pinSet=new Set(pinnedFolders),parent=name=>folderParent(name);
+    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
+    const sortedPins=pinnedFolders.filter(name=>!folderTrashed(name));
+    const live=visible(),pinSet=new Set(sortedPins),parent=name=>folderParent(name);
     const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name)&&!folderTrashed(name));
-    const sortedPins=pinnedFolders.filter(name=>state.folders.includes(name));
     const renderPinned=(folder,depth=0,seen=new Set())=>{
       if(seen.has(folder)||depth>12)return '';
       const visited=new Set(seen);visited.add(folder);
@@ -899,7 +899,7 @@
   // Freeze an independent caret Range before the OS file picker steals focus.
   // The global savedSelection changes during asynchronous uploads and must not
   // be used to place attachments once the picker closes.
-  let attachmentInsertion=null;
+  let attachmentInsertion=null,attachmentPointerCaptured=false;
   function captureAttachmentInsertion(){
     const note=current(),editor=$('rich-editor'),sel=window.getSelection();
     if(!note)return;
@@ -1478,7 +1478,8 @@
     tabs=tabs.filter(id=>id!==folderKey(folder)&&!hiddenNoteIds.has(id));
     if(activeTab===folderKey(folder)||hiddenNoteIds.has(activeTab))activeTab=tabs.at(-1)||visible()[0]?.id||null;
     if(hiddenNoteIds.has(selected))selected=visible()[0]?.id||null;
-    pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    // Keep its pinned shortcut in local UI state; simply hide it while trashed,
+    // so restoring the folder also restores its original pinned placement.
     markOrganizationChanged();saveUi();renderAll();showToast('Folder moved to Trash');
   }
   async function runAction(action,context) {
@@ -2098,12 +2099,18 @@
     [['attach-file',()=>{$('attachment-input').click();}],
      ['insert-table',insertTable],['insert-code',insertCodeBlock]].forEach(([id,cb])=>{
       $(id).addEventListener('pointerdown',event=>{
-        if(id==='attach-file')captureAttachmentInsertion();
+        if(id==='attach-file'){
+          captureAttachmentInsertion();
+          attachmentPointerCaptured=true;
+        }
         if(event.pointerType!=='touch')event.preventDefault();
         saveSelection();
       });
       $(id).addEventListener('click',()=>{
-        if(id==='attach-file'&&!attachmentInsertion)captureAttachmentInsertion();
+        if(id==='attach-file'){
+          if(!attachmentPointerCaptured)captureAttachmentInsertion();
+          attachmentPointerCaptured=false;
+        }
         cb();
       });
     });
