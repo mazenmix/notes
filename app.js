@@ -88,7 +88,7 @@
     if(!x||!Array.isArray(x.notes))throw Error('Invalid backup');
     const lookup={};
     for(const n of x.notes){if(n?.title && typeof n.id==='string')lookup[String(n.title).trim().toLocaleLowerCase()]=n.id;}
-    const folders=[...new Set((Array.isArray(x.folders)?x.folders:[]).filter(v=>typeof v==='string'&&v.length<100&&v!=='Inbox'))];
+    const folders=[...new Set([...(Array.isArray(x.folders)?x.folders:[]),...x.notes.map(n=>n?.folder)].filter(v=>typeof v==='string'&&v.length<100&&v!=='Inbox'))];
     const folderSet=new Set(folders);
     const parents={};
     if(x.folderParents&&typeof x.folderParents==='object'&&!Array.isArray(x.folderParents)){
@@ -146,6 +146,7 @@
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
   let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
+  let collapsedPinnedFolders=new Set(Array.isArray(ui.collapsedPinnedFolders)?ui.collapsedPinnedFolders:[]);
   let draggingFolder=null,draggedItem=null,dragTarget=null,dragHoverTimer=null;
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
@@ -195,7 +196,7 @@
   const plain=html=>{const d=document.createElement('div');d.innerHTML=safeHtml(html);return d.innerText||d.textContent||'';};
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
-  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,lastClosedTab}));}
+  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,collapsedPinnedFolders:[...collapsedPinnedFolders],lastClosedTab}));}
   function persist(remote=true){
     pristine=false;
     state.updatedAt=stamp();
@@ -279,15 +280,32 @@
   }
   function renderSidebar(){
     pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
-    const folders=pinnedFolders,live=visible();
+    const live=visible(),pinSet=new Set(pinnedFolders),parent=name=>folderParent(name);
+    const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name));
+    const renderPinned=(folder,depth=0,seen=new Set())=>{
+      if(seen.has(folder)||depth>12)return '';
+      const visited=new Set(seen);visited.add(folder);
+      const children=sortedFolders.filter(f=>pinSet.has(f)&&parent(f)===folder);
+      const isCollapsed=collapsedPinnedFolders.has(folder);
+      return '<div class="folder-tree-node" data-tree-folder="'+esc(folder)+'" style="--folder-depth:'+depth+'">'+
+        '<div class="pinned-folder-row '+(activeTab===folderKey(folder)?'active':'')+'" data-drag-folder="'+esc(folder)+'" draggable="true" title="Drag to nest or reorder">'+
+          '<span class="folder-drag-handle" title="Move folder" aria-hidden="true">⠿</span>'+
+          (children.length?'<button class="folder-twisty '+(isCollapsed?'collapsed':'')+'" data-toggle-pin="'+esc(folder)+'" aria-expanded="'+(!isCollapsed)+'" title="Expand folder">'+icon('chevron')+'</button>':'<span class="folder-twisty-placeholder"></span>')+
+          '<button class="folder-item '+(activeTab===folderKey(folder)?'active':'')+'" data-folder="'+esc(folder)+'" title="Open folder">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(folder)+'</span><span class="count">'+live.filter(n=>n.folder===folder).length+'</span></button>'+
+          '<button class="folder-rename-btn" data-rename-folder="'+esc(folder)+'" title="Rename folder" aria-label="Rename '+esc(folder)+'">'+icon('edit')+'</button>'+
+        '</div>'+
+        (children.length&&!isCollapsed?'<div class="folder-tree-children">'+children.map(c=>renderPinned(c,depth+1,visited)).join('')+'</div>':'')+
+      '</div>';
+    };
+    const pinnedRoots=sortedFolders.filter(f=>pinSet.has(f)&&!pinSet.has(parent(f)));
+    $('folder-list').innerHTML=pinnedRoots.map(f=>renderPinned(f)).join('');
     const quick=[['inbox','Notes','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
       ['star','Starred','star',live.filter(n=>n.starred).length],
       ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted&&!n.purged).length],
-      ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
+      ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    $('folder-list').innerHTML=folders.map(f=>'<div class="pinned-folder-row '+(activeTab===folderKey(f)?'active':'')+'" data-drag-folder="'+esc(f)+'" draggable="true" title="Drag to reorder"><span class="folder-drag-handle" aria-hidden="true">⠿</span><button class="folder-item '+(activeTab===folderKey(f)?'active':'')+'" data-folder="'+esc(f)+'" title="Open folder as tab">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button><button class="folder-rename-btn" data-rename-folder="'+esc(f)+'" title="Rename folder" aria-label="Rename '+esc(f)+'">'+icon('edit')+'</button></div>').join('');
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
@@ -297,26 +315,32 @@
       const q=search.toLocaleLowerCase();
       notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
     }
-    notes.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
     $('notes-total').textContent=notes.length;
     $('toggle-notes-list').setAttribute('aria-expanded',String(!notesCollapsed));
     $('toggle-notes-list').classList.toggle('collapsed',notesCollapsed);
     if(notesCollapsed){$('note-list').innerHTML='';return;}
-    const renderNote=n=>'<div class="note-row"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · right-click for actions">'+icon('file')+
+    const renderNote=n=>'<div class="note-row" data-drag-note="'+esc(n.id)+'" draggable="true" title="Drag into a folder or between notes"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · drag to move">'+icon('file')+
       '<span class="note-name" dir="auto">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button></div>';
     const groupMap=new Map();
     for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
-    const ordered=[...groupMap.entries()].sort((a,b)=>{
-      const ai=['Inbox',...pinnedFolders,...state.folders].indexOf(a[0]),bi=['Inbox',...pinnedFolders,...state.folders].indexOf(b[0]);
-      return (ai<0?999:ai)-(bi<0?999:bi);
-    });
-    $('note-list').innerHTML=ordered.length?ordered.map(([folder,items])=>{
+    const foldersWithContent=new Set(groupMap.keys()),fullOrder=['Inbox',...sortedFolders];
+    const groupFolders=[...new Set([...fullOrder,...groupMap.keys()])].filter(f=>foldersWithContent.has(f));
+    const renderGroup=(folder,depth=0,seen=new Set())=>{
+      if(seen.has(folder)||depth>12)return '';
+      const visited=new Set(seen);visited.add(folder);
+      const items=sortFolderNotes(groupMap.get(folder)||[],folder);
       const folded=collapsedGroups.has(folder);
-      return '<section class="note-group"><button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
-        '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
-        (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:4).map(renderNote).join('')+
-          (items.length>4?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+'</div>')+'</section>';
-    }).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
+      const children=groupFolders.filter(f=>f!=='Inbox'&&parent(f)===folder);
+      return '<section class="note-group" data-note-group="'+esc(folder)+'" style="--group-depth:'+depth+'">'+
+        '<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
+          '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
+        (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:6).map(renderNote).join('')+
+           (items.length>6?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+
+           children.map(c=>renderGroup(c,depth+1,visited)).join('')+'</div>')+
+      '</section>';
+    };
+    const roots=groupFolders.filter(f=>f==='Inbox'||!foldersWithContent.has(parent(f)));
+    $('note-list').innerHTML=roots.length?roots.map(f=>renderGroup(f)).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
   }
   function updateSummary(){
     const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
@@ -325,7 +349,7 @@
     $('character-count').textContent=text.length.toLocaleString()+' characters';
   }
   function renderFolderView(folder){
-    const all=visible().filter(n=>n.folder===folder).sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
+    const all=sortFolderNotes(visible().filter(n=>n.folder===folder),folder);
     const titled=all.filter(n=>n.title.trim().toLocaleLowerCase()!=='untitled');
     const drafts=all.filter(n=>n.title.trim().toLocaleLowerCase()==='untitled');
     const card=n=>'<button class="folder-note-card" data-folder-note="'+esc(n.id)+'"><span class="folder-card-icon">'+icon('file')+'</span><span class="folder-card-detail"><strong dir="auto">'+esc(n.title)+'</strong><small dir="auto">'+esc(plain(n.html).trim().slice(0,100)||'Empty note')+'</small></span><time>'+esc(timeAgo(n.updatedAt))+'</time></button>';
@@ -1112,10 +1136,15 @@
       const found=merged.get(n.id);
       if(!found || Date.parse(n.updatedAt)>=Date.parse(found.updatedAt))merged.set(n.id,n);
     }
-    const folders=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt)?local.folders:r.folders;
+    const localFoldersWin=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt);
+    const folders=localFoldersWin?local.folders:r.folders;
     const foldersUpdatedAt=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt)?local.foldersUpdatedAt:r.foldersUpdatedAt;
-    return {version:3,notes:[...merged.values()],folders,foldersUpdatedAt,updatedAt:
-      Date.parse(local.updatedAt)>Date.parse(r.updatedAt)?local.updatedAt:r.updatedAt};
+    const orgLocal=Date.parse(local.organizationUpdatedAt||'')>=Date.parse(r.organizationUpdatedAt||'');
+    const org=orgLocal?local:r;
+    return normalize({version:3,notes:[...merged.values()],folders,foldersUpdatedAt,
+      folderParents:org.folderParents,folderOrder:org.folderOrder,noteOrder:org.noteOrder,
+      organizationUpdatedAt:org.organizationUpdatedAt,updatedAt:
+      Date.parse(local.updatedAt)>Date.parse(r.updatedAt)?local.updatedAt:r.updatedAt});
   }
   function scheduleSync(){
     if(!ownerActive){makeSavedStatus('Saved locally · Unlock cloud');return;}
@@ -1172,7 +1201,7 @@
       revision=response.revision||0;
       if(response.workspace){
         const merged=pristine?normalize(response.workspace):mergeWorkspaces(state,response.workspace);
-        if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)){
+        if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)||JSON.stringify(merged.folderParents)!==JSON.stringify(state.folderParents)||JSON.stringify(merged.folderOrder)!==JSON.stringify(state.folderOrder)||JSON.stringify(merged.noteOrder)!==JSON.stringify(state.noteOrder)){
           state=merged;pristine=false;localStorage.setItem(STORE,JSON.stringify(state));
           if(!isEditing)renderAll();
           dirty=JSON.stringify(merged)!==JSON.stringify(response.workspace);
