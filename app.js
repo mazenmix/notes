@@ -404,6 +404,27 @@
     checkbox.textContent=next==='1'?'☑':'☐';
     onEditorInput();
   }
+  function headingEnter(event){
+    if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.metaKey||event.isComposing)return false;
+    const selection=window.getSelection();
+    if(!selection?.rangeCount||!selection.isCollapsed)return false;
+    const anchor=selection.anchorNode;
+    const node=anchor?.nodeType===1?anchor:anchor?.parentElement;
+    const heading=node?.closest('[data-note-title="1"]');
+    if(!heading||heading!==$('rich-editor').firstElementChild)return false;
+    event.preventDefault();
+    const tail=selection.getRangeAt(0).cloneRange();
+    tail.setEnd(heading,heading.childNodes.length);
+    const rest=tail.extractContents(),line=document.createElement('p');
+    if(rest.hasChildNodes())line.appendChild(rest);
+    else line.appendChild(document.createElement('br'));
+    heading.after(line);
+    const caret=document.createRange();
+    caret.setStart(line,0);caret.collapse(true);
+    selection.removeAllRanges();selection.addRange(caret);
+    savedSelection=caret.cloneRange();
+    onEditorInput();return true;
+  }
   function checklistEnter(event){
     if(event.key!=='Enter'||event.shiftKey||event.ctrlKey||event.metaKey)return;
     const selection=window.getSelection();
@@ -1289,6 +1310,7 @@
         if(e.key===' '||e.key==='Enter'){e.preventDefault();toggleCheckbox(e.target.closest('[data-checkbox]'));}
         return;
       }
+      if(headingEnter(e))return;
       checklistEnter(e);
     });
     editor.addEventListener('click',e=>{
