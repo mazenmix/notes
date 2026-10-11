@@ -391,7 +391,7 @@
       '<button type="button" class="desktop-note-card '+(selected===n.id&&!isFolderTab(activeTab)?'selected':'')+'" data-desktop-note="'+esc(n.id)+'">'+
        '<strong dir="auto">'+esc(n.title||'Untitled')+'</strong>'+
        '<span class="desktop-note-meta"><time>'+esc(timeAgo(n.updatedAt))+'</time><span dir="auto">'+esc(iosNotePreview(n))+'</span></span>'+
-      '</button>').join(''):'<div class="desktop-note-empty">No notes yet</div>';
+      '</button>').join(''):'';
   }
   function selectDesktopFolder(folder){
     if(isIosLayout())return;
@@ -495,7 +495,7 @@
         '<strong dir="auto">'+esc(n.title||'Untitled')+'</strong>'+
         '<span class="ios-note-details"><time>'+dateLabel(n.updatedAt)+'</time><span dir="auto">'+esc(iosNotePreview(n))+'</span></span></button>').join('')+
       '</div></section>').join(''):
-      '<div class="ios-empty-list">'+(iosSearchTerm?'No matching notes.':'No notes here yet.')+'</div>';
+      '';
   }
   function iosGoToFolder(folder){
     if(folder==='all'||folder==='star'||folder==='trash'){
