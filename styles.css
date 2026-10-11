@@ -974,3 +974,215 @@ body.folder-tab-active .editor-footer{visibility:hidden}
 :root[data-theme="sepia"] .paint-marker svg{color:#876d35}
 :root[data-theme="sepia"] .note-tab.active{background:#e4d5bb}
 :root[data-theme="sepia"] .theme-tile.active{background:#e4d2b4}
+
+
+/* MX Note mobile & tablet: Apple Notes-inspired three-stage navigation.
+   This entire layout is scoped below 1100px; desktop editor stays unchanged. */
+.ios-folders-screen,.ios-notes-screen,.ios-bottom-dock{display:none}
+@media(max-width:1100px){
+  :root{
+    --ios-bg:#050505;--ios-card:#1c1c1e;--ios-ink:#f6f6f8;
+    --ios-subtle:#95959b;--ios-divider:#38383b;
+    --ios-yellow:#ffca05;--ios-control:#222224;--ios-control-border:#3a3a3e
+  }
+  :root[data-theme="light"]{
+    --ios-bg:#f6f6f8;--ios-card:#ffffff;--ios-ink:#17191d;
+    --ios-subtle:#777c84;--ios-divider:#e1e2e6;
+    --ios-yellow:#be8900;--ios-control:#e8e9ec;--ios-control-border:#d6d8df
+  }
+  :root[data-theme="sepia"]{
+    --ios-bg:#f2e7d4;--ios-card:#fff5e5;--ios-ink:#453727;
+    --ios-subtle:#807263;--ios-divider:#dfcfb6;
+    --ios-yellow:#a88019;--ios-control:#e8d9bf;--ios-control-border:#d9c6a8
+  }
+  :root[data-theme="midnight"]{
+    --ios-bg:#0c1626;--ios-card:#18283c;--ios-ink:#e8f1fb;
+    --ios-subtle:#9babc2;--ios-divider:#33465d;
+    --ios-yellow:#ecc65b;--ios-control:#1d2c43;--ios-control-border:#3b506a
+  }
+  :root[data-theme="nord"]{
+    --ios-bg:#252c38;--ios-card:#343e4c;--ios-ink:#eceff4;
+    --ios-subtle:#a4b4c6;--ios-divider:#4e5d70;
+    --ios-yellow:#ecc475;--ios-control:#3e4a5b;--ios-control-border:#526479
+  }
+  :root[data-theme="forest"]{
+    --ios-bg:#0c1f17;--ios-card:#1a3528;--ios-ink:#e7f3e9;
+    --ios-subtle:#9cb6a5;--ios-divider:#365645;
+    --ios-yellow:#e4c46d;--ios-control:#274438;--ios-control-border:#3b5e4a
+  }
+  :root[data-theme="rose"]{
+    --ios-bg:#241a24;--ios-card:#392a38;--ios-ink:#f6ecf2;
+    --ios-subtle:#c0a7b8;--ios-divider:#574454;
+    --ios-yellow:#e6be78;--ios-control:#423141;--ios-control-border:#654e61
+  }
+  :root[data-theme="solarized"]{
+    --ios-bg:#001e26;--ios-card:#123942;--ios-ink:#eee8d5;
+    --ios-subtle:#93a6a5;--ios-divider:#35535b;
+    --ios-yellow:#b9a65b;--ios-control:#20464f;--ios-control-border:#38616a
+  }
+  html,body{background:var(--ios-bg)}
+  body[data-ios-layout="true"] .app-shell{
+    width:100%;height:100dvh;max-height:100dvh;margin:0;border:0;
+    border-radius:0;background:var(--ios-bg);box-shadow:none;overflow:hidden;
+    position:relative
+  }
+  body[data-ios-layout="true"] .sidebar,body[data-ios-layout="true"] .mobile-nav{
+    display:none!important
+  }
+  body[data-ios-layout="true"] .overlay{display:none!important}
+  body[data-ios-layout="true"] .editor-pane{display:none!important}
+  body[data-ios-layout="true"][data-ios-screen="editor"] .editor-pane{display:flex!important}
+  body[data-ios-layout="true"] :is(.ios-folders-screen,.ios-notes-screen){
+    min-width:0;min-height:0;height:100%;flex-direction:column;
+    background:var(--ios-bg);color:var(--ios-ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",sans-serif;
+    -webkit-font-smoothing:antialiased;overflow:hidden
+  }
+  body[data-ios-layout="true"] :is(.ios-folders-screen,.ios-notes-screen):not([hidden]){display:flex}
+  .ios-folders-top{padding:calc(env(safe-area-inset-top,0px) + 22px) 20px 9px}
+  .ios-top-actions{display:flex;align-items:center;justify-content:flex-end;gap:11px;min-height:42px}
+  .ios-round-action,.ios-pill-action,.ios-back-button{
+    border:1px solid var(--ios-control-border);color:var(--ios-ink);
+    background:linear-gradient(158deg,color-mix(in srgb,var(--ios-control) 85%,white 15%),var(--ios-control));
+    box-shadow:inset 0 1px #ffffff1a,0 2px 6px #0001
+  }
+  .ios-round-action{position:relative;width:43px;height:43px;flex:none;
+    display:grid;place-items:center;border-radius:50%}
+  .ios-round-action svg{height:23px;width:23px;stroke-width:2.1}
+  .ios-add-plus{position:absolute;right:4px;bottom:4px;border-radius:50%;
+    background:var(--ios-ink);color:var(--ios-bg);font-size:15px;line-height:17px;
+    font-weight:750;width:17px;height:17px;text-align:center}
+  .ios-settings-trigger svg{height:20px;width:20px;opacity:.88}
+  .ios-pill-action{border-radius:30px;padding:0 19px;min-height:42px;font-size:16px;font-weight:650}
+  .ios-top-actions button:active,.ios-compose:active{transform:scale(.95)}
+  .ios-folders-top h1{font-size:clamp(35px,8.3vw,45px);line-height:1.14;
+    letter-spacing:-1.5px;font-weight:770;margin:28px 0 0;color:var(--ios-ink)}
+  .ios-folders-scroll,.ios-notes-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+    padding:13px 20px calc(123px + env(safe-area-inset-bottom,0px));
+    overscroll-behavior:contain;scrollbar-width:none}
+  .ios-folders-scroll::-webkit-scrollbar,.ios-notes-scroll::-webkit-scrollbar{display:none}
+  .ios-folders-scroll h2,.ios-pinned-section h2{margin:6px 0 14px;font-size:21px;
+    letter-spacing:-.35px;font-weight:700}
+  .ios-folder-group{background:var(--ios-card);border-radius:25px;
+    overflow:hidden;padding:0 16px}
+  .ios-folder-entry{min-width:0}
+  .ios-folder-line{display:flex;align-items:center;min-height:66px;gap:0;
+    padding-left:calc(var(--ios-indent,0)*17px);position:relative}
+  .ios-folder-line:after{content:"";position:absolute;bottom:0;left:46px;right:0;
+    height:1px;background:var(--ios-divider)}
+  .ios-folder-entry:last-child>.ios-folder-line:after{display:none}
+  .ios-folder-open{display:flex;align-items:center;gap:14px;text-align:left;
+    flex:1;min-width:0;min-height:65px;padding:0;background:transparent;border:0}
+  .ios-folder-open>svg{color:var(--ios-yellow);width:27px;height:27px;stroke-width:2.3}
+  .ios-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:17px;font-weight:560;letter-spacing:-.25px;color:var(--ios-ink)}
+  .ios-folder-count{color:var(--ios-subtle);font-size:17px;font-variant-numeric:tabular-nums}
+  .ios-arrow{display:grid;place-items:center;transform:rotate(-90deg);color:var(--ios-subtle);
+    margin-left:3px;opacity:.65}
+  .ios-arrow svg{height:17px;width:17px;stroke-width:2.5}
+  .ios-expand{display:grid;place-items:center;flex:none;width:29px;height:35px;
+    border:0;background:transparent;color:var(--ios-subtle);border-radius:50%;margin-left:1px}
+  .ios-expand svg{width:18px;height:18px;stroke-width:2.5;transform:rotate(-90deg);
+    transition:transform .2s ease}
+  .ios-expand.is-expanded svg{transform:rotate(0)}
+  .ios-folder-tools{display:flex;align-items:center;flex-shrink:0;gap:1px}
+  .ios-folder-tools button{height:33px;min-width:27px;border-radius:7px;background:var(--ios-control);
+    color:var(--ios-ink);border:0;font-size:16px}
+  .ios-subfolders{padding-left:13px;margin:0 0 3px 14px;border-left:1px solid var(--ios-divider)}
+  .ios-pinned-section{margin-top:26px}
+  .ios-list-top{display:flex;align-items:center;justify-content:space-between;
+    padding:calc(env(safe-area-inset-top,0px) + 20px) 20px 0;flex:none}
+  .ios-back-button{min-height:43px;display:flex;align-items:center;gap:5px;
+    background:transparent;border:0;box-shadow:none;font-size:17px;color:var(--ios-yellow);
+    padding:0 4px 0 0}
+  .ios-back-button svg{width:25px;height:25px;stroke-width:2.6}
+  .ios-notes-scroll{padding-top:25px}
+  .ios-notes-scroll>h1{font-size:clamp(35px,8vw,44px);line-height:1.1;
+    font-weight:760;letter-spacing:-1.2px;margin:0 0 7px}
+  #ios-list-count{font-size:17px;color:var(--ios-subtle);margin:0 0 31px}
+  .ios-date-section{margin:0 0 37px}
+  .ios-date-section>h2{font-size:21px;margin:0 0 16px;letter-spacing:-.4px;
+    font-weight:720}
+  .ios-note-card{background:var(--ios-card);padding:0 16px;
+    border-radius:24px;overflow:hidden}
+  .ios-note-row{width:100%;text-align:left;display:flex;flex-direction:column;
+    padding:14px 0 14px;min-height:79px;gap:5px;border:0;
+    border-bottom:1px solid var(--ios-divider);background:transparent;color:var(--ios-ink)}
+  .ios-note-row:last-child{border-bottom:0}
+  .ios-note-row strong{font-size:17px;line-height:1.24;letter-spacing:-.3px;font-weight:720;
+    white-space:nowrap;text-overflow:ellipsis;overflow:hidden;width:100%}
+  .ios-note-details{min-width:0;display:flex;align-items:center;gap:9px;width:100%;
+    color:var(--ios-subtle);font-size:14px;line-height:1.3}
+  .ios-note-details time{flex:none;white-space:nowrap}
+  .ios-note-details span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ios-empty-list{font-size:15px;color:var(--ios-subtle);padding:22px 4px}
+  .ios-note-row:active,.ios-folder-open:active{opacity:.6}
+  body[data-ios-layout="true"] .ios-bottom-dock:not([hidden]){
+    position:fixed;z-index:17;left:20px;right:20px;
+    bottom:calc(18px + env(safe-area-inset-bottom,0px));
+    display:flex;align-items:center;gap:12px;
+    height:59px;pointer-events:none
+  }
+  .ios-bottom-dock :is(button,input,label){pointer-events:auto}
+  .ios-search-pill{flex:1;min-width:0;height:57px;border:1px solid var(--ios-control-border);
+    border-radius:36px;background:var(--ios-control);box-shadow:inset 0 2px #ffffff10,0 4px 18px #0003;
+    display:flex;align-items:center;padding:0 18px;gap:12px}
+  .ios-search-pill svg{width:22px;height:22px;color:var(--ios-ink);stroke-width:2.7}
+  .ios-search-pill input{flex:1;min-width:0;border:0;outline:0;background:transparent;
+    color:var(--ios-ink);font-size:17px;font-weight:500}
+  .ios-search-pill input::placeholder{color:var(--ios-subtle)}
+  .ios-compose{display:grid;place-items:center;flex:0 0 58px;width:58px;height:58px;
+    border-radius:50%;border:1px solid var(--ios-control-border);background:var(--ios-control);
+    box-shadow:inset 0 2px #ffffff12,0 4px 18px #0003;color:var(--ios-ink)}
+  .ios-compose svg{height:27px;width:27px;stroke-width:2.2}
+  body[data-ios-layout="true"] .editor-pane{
+    background:var(--ios-bg);color:var(--ios-ink);width:100%;height:100dvh;min-height:0
+  }
+  body[data-ios-layout="true"] .editor-toolbar{background:var(--ios-bg);border:0}
+  body[data-ios-layout="true"] .mobile-menu{display:grid}
+  body[data-ios-layout="true"] .mobile-menu svg{width:23px;height:23px}
+  body[data-ios-layout="true"] .mobile-note-title{display:flex;font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif}
+  body[data-ios-layout="true"] .editor-scroll{min-height:0;flex:1}
+  body[data-ios-layout="true"] .writing-controls{border-top:1px solid var(--ios-divider)}
+  body[data-ios-layout="true"] .editor-pane .rich-editor{color:var(--ios-ink)}
+}
+@media(max-width:760px){
+  body[data-ios-layout="true"] .app-shell{display:block!important}
+  body[data-ios-layout="true"][data-ios-screen="folders"] .ios-folders-screen{display:flex}
+  body[data-ios-layout="true"][data-ios-screen="list"] .ios-notes-screen{display:flex}
+  body[data-ios-layout="true"] .editor-pane{padding-bottom:58px}
+  body[data-ios-layout="true"] .editor-content{padding-top:24px}
+  body[data-ios-layout="true"] .editor-toolbar{padding-top:calc(14px + env(safe-area-inset-top,0px))}
+  body[data-ios-layout="true"] .mobile-nav{display:none!important}
+}
+@media(min-width:761px) and (max-width:1100px){
+  body[data-ios-layout="true"] .app-shell{
+    display:grid!important;grid-template-columns:minmax(300px,36%) minmax(0,1fr);
+    grid-template-rows:minmax(0,1fr)
+  }
+  body[data-ios-layout="true"] .ios-folders-screen{
+    display:flex!important;grid-column:1;grid-row:1;
+    border-right:1px solid var(--ios-divider);min-height:0;height:100%
+  }
+  body[data-ios-layout="true"] .ios-notes-screen{
+    grid-column:2;grid-row:1;min-height:0;height:100%
+  }
+  body[data-ios-layout="true"] .editor-pane{
+    grid-column:2;grid-row:1;min-height:0;height:100%
+  }
+  body[data-ios-layout="true"][data-ios-screen="folders"] .ios-notes-screen{display:flex!important}
+  body[data-ios-layout="true"] .ios-folders-top{padding:28px 19px 8px}
+  body[data-ios-layout="true"] .ios-folders-top h1{font-size:37px}
+  body[data-ios-layout="true"] .ios-folders-scroll{padding-inline:16px}
+  body[data-ios-layout="true"] .ios-folder-open{gap:11px}
+  body[data-ios-layout="true"] .ios-folder-name{font-size:15px}
+  body[data-ios-layout="true"] .ios-folder-count{font-size:15px}
+  body[data-ios-layout="true"] .ios-notes-scroll{padding-inline:28px}
+  body[data-ios-layout="true"] .ios-bottom-dock:not([hidden]){
+    left:18px;right:auto;width:calc(36% - 36px)
+  }
+  body[data-ios-layout="true"] .editor-content{padding:36px 31px 0;width:100%}
+  body[data-ios-layout="true"] .editor-pane .mobile-menu{display:grid}
+}
+@media(prefers-reduced-motion:reduce){
+  .ios-expand svg,.ios-top-actions button{transition:none!important}
+}
