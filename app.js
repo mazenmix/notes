@@ -1370,12 +1370,15 @@
         if(!ok)break;
         const now=stamp();
         pending.forEach(item=>{item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.starred=false;item.archived=false;item.updatedAt=now;});
-        for(const folder of trashedFolders){
+        const allPurgedFolders=new Set(trashedFolders);
+        for(const folder of state.folders)if(trashedFolders.some(root=>folderDescends(folder,root)))allPurgedFolders.add(folder);
+        for(const folder of allPurgedFolders){
           state.folderTrash[folder]={deleted:true,purged:true,updatedAt:now};
           state.notes.filter(item=>item.folder===folder&&!item.purged).forEach(item=>{
             item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.updatedAt=now;
           });
         }
+        state.organizationUpdatedAt=now;state.foldersUpdatedAt=now;
         const removed=new Set(pending.map(item=>item.id));
         tabs=tabs.filter(id=>!removed.has(id));
         if(removed.has(selected))selected=visible()[0]?.id||null;
@@ -1927,7 +1930,10 @@
     const editor=$('rich-editor');
     editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
     editor.addEventListener('input',onEditorInput);
-    editor.addEventListener('focusout',e=>{if(e.target.closest('pre[data-code-block]')){highlightBlocks();onEditorInput();}});
+    editor.addEventListener('focusout',e=>{
+      const code=e.target.closest('pre[data-code-block]>code');
+      if(code)setTimeout(()=>{if(code.isConnected&&!code.contains(document.activeElement)){colorizeCode(code);onEditorInput();}},40);
+    });
     [['attach-file',()=>{saveSelection();$('attachment-input').click();}],
      ['insert-table',insertTable],['insert-code',insertCodeBlock]].forEach(([id,cb])=>{
       $(id).addEventListener('pointerdown',event=>{if(event.pointerType!=='touch')event.preventDefault();saveSelection();});
