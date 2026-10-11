@@ -1049,8 +1049,8 @@
     {divider:true},
     {ico:'archive',label:n.archived?'Unarchive':'Archive',action:'archive-note'},
     {ico:'download',label:'Export HTML',action:'export-note'},
-    {ico:'trash',label:n.deleted?'Keep in Trash':'Move to trash',action:'delete-note',danger:!n.deleted},
-    ...(n.deleted?[{ico:'refresh',label:'Restore',action:'restore-note'}]:[])
+    ...(n.deleted?[{ico:'refresh',label:'Restore from Trash',action:'restore-note'}]:
+      [{ico:'trash',label:'Move to Trash',action:'delete-note',danger:true}])
   ];
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
   const folderOptions=folder=>[
