@@ -92,7 +92,7 @@
   let panelHidden=!!ui.panelHidden,focusMode=false,insightTab='graph',isEditing=false,cloudReady=false,ownerActive=false;
   let cloudStatus='Saved on this device',syncTimer=null,maxSyncTimer=null,syncing=false,requestedSync=false,dirty=false,revision=0,lastConfirmed=null;
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
-  let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,skipClickUntil=0;
+  let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
   const current=()=>state.notes.find(n=>n.id===selected)||null;
   const visible=()=>state.notes.filter(n=>!n.deleted&&!n.archived);
   const findNote=id=>state.notes.find(n=>n.id===id);
@@ -229,7 +229,9 @@
     const n=current();if(!n)return;
     n.html=safeHtml($('rich-editor').innerHTML);
     n.updatedAt=stamp();persist();updateSummary();
-    renderSidebar();renderInsights();
+    // Keep the editor and cursor completely untouched while typing.
+    clearTimeout(uiRenderTimer);
+    uiRenderTimer=setTimeout(()=>{renderSidebar();renderInsights();},350);
   }
   function onTitleInput(){
     const n=current();if(!n)return;
