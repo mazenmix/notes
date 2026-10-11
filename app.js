@@ -1132,7 +1132,42 @@
     $('quick-links').addEventListener('click',e=>{
       const b=e.target.closest('[data-filter]');if(b){if(b.dataset.filter==='inbox')openFolder('Inbox');else setFilter(b.dataset.filter);}
     });
-    $('folder-list').addEventListener('click',async e=>{
+    const folderList=$('folder-list');
+    const clearDragHints=()=>{
+      folderList.querySelectorAll('.dragging,.drop-before,.drop-after').forEach(x=>x.classList.remove('dragging','drop-before','drop-after'));
+    };
+    folderList.addEventListener('dragstart',e=>{
+      const row=e.target.closest('[data-drag-folder]');
+      if(!row||e.target.closest('[data-rename-folder]')){e.preventDefault();return;}
+      draggingFolder=row.dataset.dragFolder;
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',draggingFolder);
+      requestAnimationFrame(()=>row.classList.add('dragging'));
+    });
+    folderList.addEventListener('dragover',e=>{
+      const target=e.target.closest('[data-drag-folder]');
+      if(!draggingFolder||!target||target.dataset.dragFolder===draggingFolder)return;
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      clearDragHints();
+      const before=e.clientY<target.getBoundingClientRect().top+target.offsetHeight/2;
+      target.classList.add(before?'drop-before':'drop-after');
+    });
+    folderList.addEventListener('drop',e=>{
+      const target=e.target.closest('[data-drag-folder]');
+      if(!draggingFolder||!target){clearDragHints();draggingFolder=null;return;}
+      e.preventDefault();
+      const moving=draggingFolder,destination=target.dataset.dragFolder;
+      const before=e.clientY<target.getBoundingClientRect().top+target.offsetHeight/2;
+      clearDragHints();draggingFolder=null;
+      if(moving===destination)return;
+      const next=pinnedFolders.filter(name=>name!==moving);
+      const at=next.indexOf(destination);
+      if(at<0)return;
+      next.splice(at+(before?0:1),0,moving);
+      pinnedFolders=next;saveUi();renderSidebar();showToast('Folder order saved');
+    });
+    folderList.addEventListener('dragend',()=>{draggingFolder=null;clearDragHints();});
+    folderList.addEventListener('click',async e=>{
       if(Date.now()<skipClickUntil)return;
       const rename=e.target.closest('[data-rename-folder]');
       if(rename){
