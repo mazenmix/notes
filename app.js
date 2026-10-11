@@ -6,7 +6,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const uuid=()=>crypto?.randomUUID?.()||'note-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   const stamp=()=>new Date().toISOString();
-  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',VERIFIED='mxnotes.d1.lastVerified';
+  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
     version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
@@ -39,8 +39,10 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
-      if(t==='span'&&['0','1'].includes(node.getAttribute('data-checkbox')))
-        attrs=' data-checkbox="'+node.getAttribute('data-checkbox')+'" contenteditable="false"';
+      if(t==='span'&&['0','1'].includes(node.getAttribute('data-checkbox'))){
+        const checked=node.getAttribute('data-checkbox')==='1';
+        attrs=' data-checkbox="'+(checked?'1':'0')+'" contenteditable="false" role="checkbox" tabindex="0" aria-label="Checklist item" aria-checked="'+checked+'"';
+      }
       return '<'+t+attrs+'>'+children+'</'+t+'>';
     }
     return Array.from(doc.body.firstElementChild?.childNodes||[]).map(walk).join('');
@@ -92,7 +94,9 @@
   let focusMode=false,isEditing=false,cloudReady=false,ownerActive=false;
   let notesCollapsed=!!ui.notesCollapsed,collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]),expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
-  let writingFont=['system','obsidian','reading'].includes(localStorage.getItem(FONT))?localStorage.getItem(FONT):'system';
+  const fontChoices=['system','obsidian','arial','calibri','reading','times','courier','mono','cairo','naskh'];
+  let writingFont=fontChoices.includes(localStorage.getItem(FONT))?localStorage.getItem(FONT):'system';
+  let writingSize=Math.max(12,Math.min(28,Number(localStorage.getItem(FONT_SIZE))||16));
   let cloudStatus='Saved on this device',syncTimer=null,maxSyncTimer=null,syncing=false,requestedSync=false,dirty=false,revision=0,lastConfirmed=null;
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
@@ -127,10 +131,13 @@
     $('theme-mode').textContent=theme==='light'?'Light mode':'Dark mode';
     document.documentElement.dataset.writingFont=writingFont;
     $('writing-font').value=writingFont;
+    document.documentElement.style.setProperty('--editor-font-size',writingSize+'px');
+    $('font-size-label').textContent=writingSize;
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=theme==='light'?'#f8fafb':'#101214';
   }
   function toggleTheme(){theme=theme==='dark'?'light':'dark';localStorage.setItem(THEME,theme);applyTheme();showToast(theme==='dark'?'Dark mode':'Light mode');}
+  function changeFontSize(delta){writingSize=Math.max(12,Math.min(28,writingSize+delta));localStorage.setItem(FONT_SIZE,String(writingSize));applyTheme();}
   function noteTabs(){
     const wrapper=$('open-tabs');
     wrapper.innerHTML=tabs.map(id=>{
@@ -260,7 +267,10 @@
     const editor=$('rich-editor');
     editor.focus({preventScroll:true});restoreSelection();
     if(cmd==='checklist'){
-      document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false">☐</span>&nbsp;</p>');
+      document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false" role="checkbox" tabindex="0" aria-checked="false">☐</span> </p>');
+      const sel=window.getSelection(),block=sel?.anchorNode?.parentElement?.closest('[data-checklist="1"]');
+      if(block){const tail=block.lastChild;if(tail?.nodeType===3){const range=document.createRange();range.setStart(tail,tail.length);range.collapse(true);sel.removeAllRanges();sel.addRange(range);}}
+      editor.focus({preventScroll:true});
     }else if(cmd==='createLink'){
       ask('Insert a link','Existing note title or https:// URL','').then(target=>{
         if(!target?.trim())return;
@@ -518,9 +528,6 @@
     $('sync-connection').textContent=ownerActive?(cloudStatus==='Saved to cloud'?'Connected · verified':cloudStatus):cloudReady?'Sign-in required':'Not configured';
     $('last-sync-confirmed').textContent=confirmed?new Date(lastConfirmed.at).toLocaleString():'Never verified';
     $('unsynced-count').textContent=dirty?'Pending changes':ownerActive?(confirmed?'None':'Not verified'):'Local device only';
-    $('sync-explanation').textContent=ownerActive?
-      (dirty?'Recent edits are saved locally. Cloud upload and read-back verification are scheduled.':'Cloud sync checks new changes automatically every few seconds.'):
-      'Connect a Cloudflare D1 database and owner-only password, then unlock your vault.';
     $('sync-now').disabled=syncing;$('sign-in').hidden=ownerActive;$('sign-out').hidden=!ownerActive;
     $('cloud-login-fields').hidden=ownerActive;
   }
@@ -799,10 +806,11 @@
     $('focus-button').addEventListener('click',toggleFocus);
     $('theme-toggle').addEventListener('click',toggleTheme);
     $('settings-theme-toggle').addEventListener('click',toggleTheme);
-    $('writing-font').addEventListener('change',e=>{writingFont=e.target.value;localStorage.setItem(FONT,writingFont);applyTheme();showToast('Writing font updated');});
+    $('writing-font').addEventListener('change',e=>{writingFont=fontChoices.includes(e.target.value)?e.target.value:'system';localStorage.setItem(FONT,writingFont);applyTheme();showToast('Font updated');});
+    $('font-size-down').addEventListener('click',()=>changeFontSize(-1));
+    $('font-size-up').addEventListener('click',()=>changeFontSize(1));
     $('cloud-button').addEventListener('click',settingsOpen);
     $('sidebar-cloud').addEventListener('click',settingsOpen);
-    $('rail-settings').addEventListener('click',settingsOpen);
     $('settings-close').addEventListener('click',()=>$('settings-modal').close());
     $('sign-in').addEventListener('click',unlock);
     $('sign-out').addEventListener('click',signOut);
