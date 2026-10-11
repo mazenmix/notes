@@ -644,7 +644,7 @@
       activeTab=tabs.at(-1)||visible()[0]?.id||null;
       if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
     }
-    if(!state.notes.some(n=>n.id===selected&&!n.purged))selected=visible()[0]?.id||null;
+    if(!state.notes.some(n=>n.id===selected&&!n.purged&&!folderTrashed(n.folder)))selected=visible()[0]?.id||null;
     if(activeTab&&!isFolderTab(activeTab))selected=activeTab;
     renderSidebar();noteTabs();renderEditor();updateCloudUI();renderIos();renderDesktopNotes();
   }
@@ -1323,23 +1323,12 @@
     const now=stamp();
     state.folderTrash={...state.folderTrash,[folder]:{deleted:true,purged:false,updatedAt:now}};
     // Keep folder hierarchy and original note locations for one-click Restore.
-    tabs=tabs.filter(id=>id!==folderKey(folder));
-    if(activeTab===folderKey(folder))activeTab=selected;
+    const hiddenNoteIds=new Set(state.notes.filter(n=>folderTrashed(n.folder)).map(n=>n.id));
+    tabs=tabs.filter(id=>id!==folderKey(folder)&&!hiddenNoteIds.has(id));
+    if(activeTab===folderKey(folder)||hiddenNoteIds.has(activeTab))activeTab=tabs.at(-1)||visible()[0]?.id||null;
+    if(hiddenNoteIds.has(selected))selected=visible()[0]?.id||null;
     pinnedFolders=pinnedFolders.filter(f=>f!==folder);
     markOrganizationChanged();saveUi();renderAll();showToast('Folder moved to Trash');
-  }
-  function oldRemoveFolder(folder){
-    state.folders=state.folders.filter(f=>f!==folder);pinnedFolders=pinnedFolders.filter(f=>f!==folder);
-    state.folderOrder=state.folderOrder.filter(f=>f!==folder);
-    const parents={...state.folderParents};
-    for(const [child,parent] of Object.entries(parents))if(parent===folder)delete parents[child];
-    delete parents[folder];state.folderParents=parents;
-    const ordered={...state.noteOrder};delete ordered[folder];state.noteOrder=ordered;
-    state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
-    if(filter==='folder:'+folder)filter='inbox';
-    tabs=tabs.filter(id=>id!==folderKey(folder));
-    if(activeTab===folderKey(folder))activeTab=selected;
-    markOrganizationChanged();saveUi();renderAll();showToast('Notes moved to Notes; subfolders retained');
   }
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
