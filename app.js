@@ -920,17 +920,61 @@
     if(!range){range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
     attachmentInsertion={noteId:note.id,range};
   }
-  function insertAttachmentAtSavedCaret(markup){
+  function imageGalleryAtCaret(range,editor){
+    if(!range)return null;
+    const node=range.startContainer;
+    const element=node.nodeType===1?node:node.parentElement;
+    if(!element||!editor.contains(element))return null;
+    const existing=element.closest?.('[data-asset-gallery="1"]');
+    if(existing)return existing;
+    let before=null;
+    if(node.nodeType===1&&range.startOffset>0){
+      before=node.childNodes[range.startOffset-1];
+      if(before?.nodeType===3)before=before.previousSibling;
+    }
+    const block=element.closest?.('p,div,figure');
+    if(!before&&block&&block!==editor){
+      // Only join a gallery next to a blank insertion paragraph.
+      if(!block.textContent.trim())before=block.previousElementSibling;
+    }
+    if(before?.nodeType===1&&before.matches?.('[data-asset-gallery="1"]'))return before;
+    if(before?.nodeType===1&&before.matches?.('figure[data-kind="image"]')){
+      const gallery=document.createElement('div');
+      gallery.dataset.assetGallery='1';
+      before.parentNode.insertBefore(gallery,before);gallery.append(before);
+      return gallery;
+    }
+    return null;
+  }
+  function insertAttachmentAtSavedCaret(markup,isImage=false){
     const bookmark=attachmentInsertion,note=bookmark&&findNote(bookmark.noteId);
     if(!note||note.deleted||note.purged){showToast('Original note unavailable');return false;}
     // Never insert into another note if a tab was changed while uploading.
     if(current()?.id!==note.id){
-      note.html=safeHtml((note.html||'')+markup);
+      // Only append to the original note when its editor is no longer active.
+      note.html=safeHtml((note.html||'')+(isImage?'<div data-asset-gallery="1">'+markup.split('</figure>')[0]+'</figure></div><p><br></p>':markup));
       note.updatedAt=stamp();persist();renderSidebar();renderDesktopNotes();renderIos();
       return true;
     }
     const editor=$('rich-editor'),range=bookmark.range;
     editor.focus({preventScroll:true});
+    if(isImage&&range&&editor.contains(range.startContainer)){
+      const gallery=imageGalleryAtCaret(range,editor);
+      if(gallery){
+        const template=document.createElement('template');template.innerHTML=markup;
+        const figure=template.content.querySelector('figure[data-kind="image"]');
+        if(figure){
+          gallery.append(figure);
+          const end=document.createRange(),sel=window.getSelection();
+          end.setStartAfter(gallery);end.collapse(true);
+          sel.removeAllRanges();sel.addRange(end);
+          bookmark.range=end.cloneRange();
+          hydrateAssets();onEditorInput();saveSelection();
+          return true;
+        }
+      }
+    }
+    if(isImage)markup='<div data-asset-gallery="1">'+markup.split('</figure>')[0]+'</figure></div><p><br></p>';
     if(range&&editor.contains(range.startContainer)&&editor.contains(range.endContainer)){
       const sel=window.getSelection();
       sel.removeAllRanges();sel.addRange(range.cloneRange());
@@ -965,7 +1009,7 @@
           '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="240" contenteditable="false">'+
           (image?'<img data-asset-image="'+esc(data.id)+'" alt="Attached image">':'<span>📎 '+esc(data.name)+'</span>')+
           (image?'':'<figcaption>'+esc(data.name)+'</figcaption>')+'</figure><p><br></p>';
-        if(insertAttachmentAtSavedCaret(figure))showToast('Attached '+file.name);
+        if(insertAttachmentAtSavedCaret(figure,image))showToast('Attached '+file.name);
       }catch(error){showToast(error.message);}
     }
     attachmentInsertion=null;
