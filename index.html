@@ -9,9 +9,9 @@
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;450;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Inter:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;450;500;600&family=Noto+Naskh+Arabic:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
-  <title>MX Notes — A space to think</title>
+  <title>MX Note</title>
 </head>
 <body>
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -51,9 +51,6 @@
       <div class="brand" title="MX Notes">N</div>
       <button class="rail-button" id="rail-notes" title="Notes" aria-label="Notes"><svg><use href="#i-file"/></svg></button>
       <button class="rail-button" id="rail-star" title="Starred" aria-label="Starred"><svg><use href="#i-star"/></svg></button>
-      <div class="rail-spacer"></div>
-      <button class="rail-button" id="rail-settings" title="Appearance & settings" aria-label="Appearance & settings"><svg><use href="#i-palette"/></svg></button>
-      <div class="brand-mini">MX</div>
     </aside>
     <aside class="sidebar" id="sidebar" aria-label="Notes navigation">
       <div class="sidebar-head"><div class="side-label">WORKSPACE <span class="side-dot"></span></div><button class="icon-button sidebar-close" id="close-sidebar" aria-label="Close navigation"><svg><use href="#i-x"/></svg></button></div>
@@ -99,8 +96,21 @@
         <button class="format-btn" data-command="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list"><svg><use href="#i-list"/></svg></button>
         <button class="format-btn list-number" data-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1.</button>
         <button class="format-btn" data-command="checklist" title="Checklist" aria-label="Checklist"><svg><use href="#i-check"/></svg></button>
-        <div class="writing-spacer"></div>
         <button class="format-btn" data-command="createLink" title="Insert link" aria-label="Insert link"><svg><use href="#i-link"/></svg></button>
+        <span class="format-divider"></span>
+        <label class="toolbar-select-wrap" for="writing-font"><span class="sr-only">Writing font</span><select id="writing-font" title="Writing font" aria-label="Writing font">
+          <option value="system">System</option><option value="obsidian">Inter</option>
+          <option value="arial">Arial</option><option value="calibri">Calibri</option>
+          <option value="reading">Georgia</option><option value="times">Times New Roman</option>
+          <option value="courier">Courier New</option><option value="mono">IBM Plex Mono</option>
+          <option value="cairo">Cairo عربي</option><option value="naskh">Noto Naskh عربي</option>
+        </select></label>
+        <div class="text-size-controls" role="group" aria-label="Writing text size">
+          <button id="font-size-down" class="format-btn size-step" type="button" aria-label="Decrease text size" title="Decrease text size">A−</button>
+          <span id="font-size-label" aria-live="polite" title="Current writing text size">16</span>
+          <button id="font-size-up" class="format-btn size-step" type="button" aria-label="Increase text size" title="Increase text size">A+</button>
+        </div>
+        <div class="writing-spacer"></div>
       </div>
       <footer class="editor-footer"><span id="word-count">0 words</span><span class="footer-separator">•</span><span id="character-count">0 characters</span><span class="footer-spacer"></span><span id="format-label">Rich text · Autosaved</span><span class="footer-separator">•</span><span class="footer-aa">Aa</span></footer>
     </main>
@@ -122,26 +132,24 @@
     <button data-style="blockquote" role="menuitem">Quote</button>
   </div>
   <dialog class="modal" id="settings-modal" aria-labelledby="settings-title">
-    <div class="modal-head"><div><span class="modal-kicker">MX NOTES</span><h2 id="settings-title">Your private writing space</h2></div><button class="icon-button" id="settings-close" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
+    <div class="modal-head"><div><span class="modal-kicker">MX NOTE</span><h2 id="settings-title">Settings</h2></div><button class="icon-button" id="settings-close" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
     <div class="cloud-state" id="cloud-state">Local-only mode</div>
     <section class="sync-verification" aria-label="Cloud sync verification">
-      <div class="verify-header"><svg><use href="#i-shield"/></svg><span>SYNC VERIFICATION</span></div>
+      <div class="verify-header"><svg><use href="#i-shield"/></svg><span>Cloud sync</span></div>
       <div class="verify-line"><span>Connection</span><strong id="sync-connection">Local only</strong></div>
       <div class="verify-line"><span>Last confirmed cloud sync</span><strong id="last-sync-confirmed">Never</strong></div>
       <div class="verify-line"><span>Unsynced changes</span><strong id="unsynced-count">Not connected</strong></div>
-      <p id="sync-explanation" class="verify-help">Notes are saved locally. To verify cloud sync, sign in below.</p>
       <button class="sync-now-button" id="sync-now" type="button"><svg><use href="#i-refresh"/></svg> Sync now & verify</button>
     </section>
     <section class="appearance-setting" aria-label="Appearance">
-      <div><span class="settings-section-label">APPEARANCE</span><p>Writing theme</p><span id="theme-mode">Dark mode</span></div>
+      <div><span class="settings-section-label">Appearance</span><p id="theme-mode">Dark mode</p></div>
       <button class="appearance-button" id="settings-theme-toggle" type="button"><svg><use href="#i-sun"/></svg> Switch to light</button>
     </section>
-    <section class="font-setting" aria-label="Writing typography"><label class="font-setting-copy" for="writing-font"><span class="settings-section-label">TYPOGRAPHY</span><strong>Writing font</strong><small>For your notes, not the interface</small></label><select id="writing-font" aria-label="Writing font"><option value="system">Apple Notes · System</option><option value="obsidian">Obsidian · Inter</option><option value="reading">Reading · Serif</option></select></section>
     <div class="form-grid" id="cloud-login-fields"><label>Your private Cloudflare password<input id="owner-password" type="password" placeholder="Owner password" autocomplete="current-password"/></label></div>
     <div class="modal-actions"><button class="primary" id="sign-in">Unlock cloud vault</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
     <p class="form-feedback" id="auth-feedback" role="status"></p>
     <hr class="modal-rule"/>
-    <h3>Backups & workspace</h3><div class="modal-actions"><button class="secondary" id="export-all"><svg><use href="#i-download"/></svg> Export backup</button><button class="secondary" id="import-all"><svg><use href="#i-upload"/></svg> Import backup</button><input id="import-file" type="file" accept="application/json,.json" hidden /></div>
+    <h3>Backups</h3><div class="modal-actions"><button class="secondary" id="export-all"><svg><use href="#i-download"/></svg> Export backup</button><button class="secondary" id="import-all"><svg><use href="#i-upload"/></svg> Import backup</button><input id="import-file" type="file" accept="application/json,.json" hidden /></div>
   </dialog>
   <dialog class="modal action-dialog" id="action-dialog" aria-labelledby="action-heading">
     <h2 id="action-heading">Edit</h2>
