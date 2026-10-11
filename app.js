@@ -136,7 +136,7 @@
   let selected=state.notes.some(n=>n.id===ui.selected&&!n.purged)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
   let activeTab=tabExists(ui.activeTab)?ui.activeTab:selected;
   if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
-  let filter='all',search='',theme=localStorage.getItem(THEME)==='light'?'light':'dark';
+  let filter='all',search='',theme=['dark','light','midnight','sepia','nord','forest','rose','solarized'].includes(localStorage.getItem(THEME))?localStorage.getItem(THEME):'dark';
   let focusMode=false,isEditing=false,cloudReady=false,ownerActive=false;
   const sidebarUpgradeKey='mxnotes.ui.organized-2026-10';
   let notesCollapsed=localStorage.getItem(sidebarUpgradeKey)!=='1'?true:!!ui.notesCollapsed;
@@ -211,18 +211,24 @@
   }
   function applyTheme(){
     document.documentElement.dataset.theme=theme;
-    $('theme-toggle').innerHTML=icon(theme==='light'?'moon':'sun');
-    $('settings-theme-toggle').innerHTML=icon(theme==='light'?'moon':'sun')+(theme==='light'?' Switch to dark':' Switch to light');
-    $('theme-mode').textContent=theme==='light'?'Light mode':'Dark mode';
+    $('theme-toggle').innerHTML=icon(['light','sepia'].includes(theme)?'moon':'sun');
+    $('theme-toggle').title='Switch between Dark and Light';
+    $('theme-mode').textContent=theme[0].toUpperCase()+theme.slice(1);
+    document.querySelectorAll('[data-pick-theme]').forEach(button=>{
+      const active=button.dataset.pickTheme===theme;
+      button.classList.toggle('active',active);
+      button.setAttribute('aria-pressed',String(active));
+    });
     document.documentElement.dataset.writingFont=writingFont;
     $('writing-font').value=writingFont;
     document.documentElement.style.setProperty('--editor-font-size',writingSize+'px');
     $('font-size-label').textContent=writingSize;
     $('auto-correct').checked=autoCorrect;
     const meta=document.querySelector('meta[name="theme-color"]');
-    if(meta)meta.content=theme==='light'?'#f8fafb':'#101214';
+    if(meta)meta.content=({light:'#f8fafb',sepia:'#f4ead7',midnight:'#101b2b',nord:'#2e3440',forest:'#162b25',rose:'#30242e',solarized:'#002b36'})[theme]||'#101214';
   }
-  function toggleTheme(){theme=theme==='dark'?'light':'dark';localStorage.setItem(THEME,theme);applyTheme();showToast(theme==='dark'?'Dark mode':'Light mode');}
+  function setTheme(next){if(!['dark','light','midnight','sepia','nord','forest','rose','solarized'].includes(next))return;theme=next;localStorage.setItem(THEME,theme);applyTheme();showToast(theme[0].toUpperCase()+theme.slice(1)+' theme');}
+  function toggleTheme(){setTheme(['light','sepia'].includes(theme)?'dark':'light');}
   function changeFontSize(delta){writingSize=Math.max(12,Math.min(28,writingSize+delta));localStorage.setItem(FONT_SIZE,String(writingSize));applyTheme();}
   function noteTabs(){
     const wrapper=$('open-tabs');
@@ -299,11 +305,8 @@
     };
     const pinnedRoots=sortedFolders.filter(f=>pinSet.has(f)&&!pinSet.has(parent(f)));
     $('folder-list').innerHTML=pinnedRoots.map(f=>renderPinned(f)).join('');
-    const quick=[['inbox','Notes','folder',live.filter(n=>n.folder==='Inbox').length],
-      ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
-      ['star','Starred','star',live.filter(n=>n.starred).length],
-      ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted&&!n.purged).length],
-      ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged).length]];
+    const quick=[['all','All Notes','file',live.length],['star','Starred','star',live.filter(n=>n.starred).length]];
+    $('trash-count').textContent=state.notes.filter(n=>n.deleted&&!n.purged).length||'';
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
@@ -323,14 +326,15 @@
       '<span class="note-name" dir="auto">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button></div>';
     const groupMap=new Map();
     for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
-    const foldersWithContent=new Set(groupMap.keys()),fullOrder=['Inbox',...sortedFolders];
-    const groupFolders=[...new Set([...fullOrder,...groupMap.keys()])].filter(f=>foldersWithContent.has(f));
+    const groupFolders=['Inbox',...sortedFolders];
+    const folderSet=new Set(groupFolders);
     const renderGroup=(folder,depth=0,seen=new Set())=>{
       if(seen.has(folder)||depth>12)return '';
       const visited=new Set(seen);visited.add(folder);
       const items=sortFolderNotes(groupMap.get(folder)||[],folder);
       const folded=collapsedGroups.has(folder);
-      const children=groupFolders.filter(f=>f!=='Inbox'&&parent(f)===folder);
+      const children=groupFolders.filter(f=>f!=='Inbox'&&
+      ((folder==='Inbox'&&!folderSet.has(parent(f)))||parent(f)===folder));
       return '<section class="note-group" data-note-group="'+esc(folder)+'" style="--group-depth:'+depth+'">'+
         '<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="'+(folder!=='Inbox')+'" aria-expanded="'+(!folded)+'" title="Drag this folder onto another to nest · drop a note to move it">'+icon('chevron')+
           '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
@@ -339,8 +343,7 @@
            children.map(c=>renderGroup(c,depth+1,visited)).join('')+'</div>')+
       '</section>';
     };
-    const roots=groupFolders.filter(f=>f==='Inbox'||!foldersWithContent.has(parent(f)));
-    $('note-list').innerHTML=roots.length?roots.map(f=>renderGroup(f)).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
+    $('note-list').innerHTML=renderGroup('Inbox');
   }
   function updateSummary(){
     const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
@@ -1020,8 +1023,7 @@
         state.folders.push(value);
         state.folderParents={...state.folderParents,[value]:folder};
         state.folderOrder=[...state.folderOrder,value];
-        pinnedFolders.push(value);collapsedPinnedFolders.delete(folder);
-        if(!pinnedFolders.includes(folder))pinnedFolders.push(folder);
+        collapsedPinnedFolders.delete(folder);
         markOrganizationChanged();saveUi();renderSidebar();showToast('Subfolder created');
       }break;
       case 'folder-to-root':if(folderParent(folder)&&moveFolder(folder,'Inbox','inside'))showToast('Moved to top level');break;
@@ -1120,7 +1122,6 @@
     const confirmed=lastConfirmed&&ownerActive&&lastConfirmed.owner===true;
     $('sync-text').textContent=cloudStatus;
     $('sync-time').textContent=confirmed&&cloudStatus==='Saved to cloud'?'· '+timeAgo(lastConfirmed.at):'';
-    $('sidebar-status').textContent=cloudStatus;
     $('sync-connection').textContent=ownerActive?(cloudStatus==='Saved to cloud'?'Connected · verified':cloudStatus):cloudReady?'Sign-in required':'Not configured';
     $('last-sync-confirmed').textContent=confirmed?new Date(lastConfirmed.at).toLocaleString():'Never verified';
     $('sync-now').disabled=syncing;$('sign-in').hidden=ownerActive;$('sign-out').hidden=!ownerActive;
@@ -1264,9 +1265,8 @@
     updateCloudUI();$('settings-modal').showModal();
   }
   function bindDelegation(){
-    $('quick-links').addEventListener('click',e=>{
-      const b=e.target.closest('[data-filter]');if(b){if(b.dataset.filter==='inbox')openFolder('Inbox');else setFilter(b.dataset.filter);}
-    });
+    $('quick-links').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(b)setFilter(b.dataset.filter);});
+    $('trash-link').addEventListener('click',()=>setFilter('trash'));
     const sidebar=$('side-scroll'),folderList=$('folder-list');
     const clearDragHints=()=>{
       sidebar.querySelectorAll('.dragging,.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('dragging','drop-before','drop-after','drop-inside'));
@@ -1570,11 +1570,9 @@
       if(['notes','inbox'].includes(f.toLocaleLowerCase())){showToast('Notes is the default folder');return;}
       const existing=state.folders.find(x=>x.toLocaleLowerCase()===f.toLocaleLowerCase());
       if(existing){
-        if(!pinnedFolders.includes(existing)){pinnedFolders.push(existing);saveUi();renderSidebar();showToast('Folder added to Pinned');}
-        else showToast('Folder already pinned');
-        openFolder(existing);return;
+        openFolder(existing);showToast('Folder opened');return;
       }
-      state.folders.push(f);state.folderOrder=[...state.folderOrder,f];pinnedFolders.push(f);markOrganizationChanged();saveUi();selectFolder(f);
+      state.folders.push(f);state.folderOrder=[...state.folderOrder,f];markOrganizationChanged();saveUi();openFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
     $('open-sidebar').addEventListener('click',()=>openSidebar());
@@ -1594,13 +1592,12 @@
     }));
     $('focus-button').addEventListener('click',toggleFocus);
     $('theme-toggle').addEventListener('click',toggleTheme);
-    $('settings-theme-toggle').addEventListener('click',toggleTheme);
+    $('theme-grid').addEventListener('click',e=>{const button=e.target.closest('[data-pick-theme]');if(button)setTheme(button.dataset.pickTheme);});
     $('writing-font').addEventListener('change',e=>{writingFont=fontChoices.includes(e.target.value)?e.target.value:'system';localStorage.setItem(FONT,writingFont);applyTheme();showToast('Font updated');});
     $('font-size-down').addEventListener('click',()=>changeFontSize(-1));
     $('font-size-up').addEventListener('click',()=>changeFontSize(1));
     $('auto-correct').addEventListener('change',e=>{autoCorrect=e.target.checked;localStorage.setItem(AUTOCORRECT,autoCorrect?'on':'off');showToast(autoCorrect?'Auto-correct on':'Auto-correct off');});
     $('cloud-button').addEventListener('click',settingsOpen);
-    $('sidebar-cloud').addEventListener('click',settingsOpen);
     $('settings-close').addEventListener('click',()=>$('settings-modal').close());
     $('sign-in').addEventListener('click',unlock);
     $('sign-out').addEventListener('click',signOut);
