@@ -1273,24 +1273,30 @@
   function bindDelegation(){
     $('quick-links').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(b)setFilter(b.dataset.filter);});
     $('trash-link').addEventListener('click',()=>setFilter('trash'));
-    const sidebar=$('side-scroll'),folderList=$('folder-list');
+    const sidebar=$('sidebar'),folderList=$('folder-list');
     const clearDragHints=()=>{
-      sidebar.querySelectorAll('.dragging,.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('dragging','drop-before','drop-after','drop-inside'));
+      sidebar.querySelectorAll('.dragging,.drop-before,.drop-after,.drop-inside,.drop-pin,.drop-trash').forEach(x=>x.classList.remove('dragging','drop-before','drop-after','drop-inside','drop-pin','drop-trash'));
       clearTimeout(dragHoverTimer);dragHoverTimer=null;dragTarget=null;
     };
     const hoveredTarget=e=>{
       const row=e.target.closest('[data-drag-folder]'),
         group=e.target.closest('[data-drop-folder]'),
         note=e.target.closest('[data-drag-note]'),
-        inbox=e.target.closest('[data-filter="inbox"]');
-      if(row)return {node:row,type:'folder',id:row.dataset.dragFolder};
+        inbox=e.target.closest('[data-drop-folder="Inbox"]'),
+        pinned=e.target.closest('#pinned-drop-area,#folder-list'),
+        trash=e.target.closest('#trash-link');
+      if(trash)return {node:trash,type:'trash',id:'Trash'};
+      if(row)return {node:row,type:'folder',id:row.dataset.dragFolder,pinned:!!row.closest('#folder-list')};
       if(group)return {node:group,type:'folder',id:group.dataset.dropFolder};
       if(note)return {node:note,type:'note',id:note.dataset.dragNote};
       if(inbox)return {node:inbox,type:'folder',id:'Inbox'};
+      if(pinned)return {node:pinned,type:'pin',id:'Pinned'};
       return null;
     };
     function getDragLocation(event,target){
       const bounds=target.node.getBoundingClientRect(),ratio=(event.clientY-bounds.top)/Math.max(1,bounds.height);
+      if(target.type==='pin')return 'pin';
+      if(target.type==='trash')return 'trash';
       if(draggedItem?.type==='note'){
         if(target.type==='folder')return 'inside';
         return ratio<.5?'before':'after';
@@ -1302,13 +1308,16 @@
     function validDrop(target,placement){
       if(!draggedItem||!placement||!target)return false;
       if(draggedItem.type==='folder'){
+        if(target.type==='pin')return state.folders.includes(draggedItem.id);
         if(target.type!=='folder'||target.id===draggedItem.id)return false;
         if(target.id!=='Inbox'&&folderDescends(target.id,draggedItem.id))return false;
         if(placement!=='inside'&&target.id==='Inbox')return false;
         return true;
       }
       const source=findNote(draggedItem.id);
-      return !!source&&!source.deleted&&!source.purged&&!(target.type==='note'&&target.id===draggedItem.id);
+      if(!source||source.deleted||source.purged)return false;
+      if(target.type==='trash')return true;
+      return target.type==='folder'||(target.type==='note'&&target.id!==draggedItem.id);
     }
     function moveFolder(name,destination,placement){
       if(!state.folders.includes(name)||(!state.folders.includes(destination)&&destination!=='Inbox'))return false;
@@ -1327,8 +1336,7 @@
         order.splice(at<0?order.length:at+(placement==='after'?1:0),0,name);
       }
       state.folderOrder=order;
-      if(!pinnedFolders.includes(name))pinnedFolders.push(name);
-      if(parent&&!pinnedFolders.includes(parent))pinnedFolders.push(parent);
+      // A structural move never pins anything. Only Pin or drag to Pinned does.
       markOrganizationChanged();saveUi();renderSidebar();
       return true;
     }
@@ -1364,7 +1372,7 @@
     sidebar.addEventListener('dragover',e=>{
       if(!draggedItem)return;
       const target=hoveredTarget(e),placement=target&&getDragLocation(e,target);
-      if(!validDrop(target,placement)){sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside'));return;}
+      if(!validDrop(target,placement)){sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside,.drop-pin,.drop-trash').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside','drop-pin','drop-trash'));return;}
       e.preventDefault();e.dataTransfer.dropEffect='move';
       const signature=target.type+':'+target.id+':'+placement;
       if(dragTarget!==signature){
@@ -1372,7 +1380,7 @@
         dragTarget=signature;
 
       }
-      sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside'));
+      sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside,.drop-pin,.drop-trash').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside','drop-pin','drop-trash'));
       target.node.classList.add('drop-'+placement);
     });
     sidebar.addEventListener('drop',e=>{
@@ -1381,8 +1389,28 @@
       if(!validDrop(target,placement)){draggedItem=null;clearDragHints();return;}
       e.preventDefault();
       const dragged=draggedItem;draggedItem=null;clearDragHints();
-      const success=dragged.type==='folder'?moveFolder(dragged.id,target.id,placement):moveNote(dragged.id,target.id,placement);
-      if(success){skipClickUntil=Date.now()+250;showToast(dragged.type==='folder'?'Folder organized':'Note moved');}
+      let success=false;
+      if(target.type==='pin'&&dragged.type==='folder'){
+        pinnedFolders=pinnedFolders.filter(f=>f!==dragged.id);
+        pinnedFolders.push(dragged.id);
+        saveUi();renderSidebar();success=true;
+      }else if(target.type==='trash'&&dragged.type==='note'){
+        const note=findNote(dragged.id);
+        if(note&&!note.deleted&&!note.purged){
+          note.deleted=true;note.updatedAt=stamp();
+          tabs=tabs.filter(id=>id!==note.id);
+          if(selected===note.id)selected=visible()[0]?.id||null;
+          if(activeTab===note.id)activeTab=tabs.at(-1)||selected;
+          persist();saveUi();renderAll();success=true;
+        }
+      }else if(target.type==='folder'&&target.pinned&&placement!=='inside'&&dragged.type==='folder'){
+        const next=pinnedFolders.filter(f=>f!==dragged.id);
+        const index=next.indexOf(target.id);
+        if(index>=0){next.splice(index+(placement==='after'?1:0),0,dragged.id);pinnedFolders=next;saveUi();renderSidebar();success=true;}
+      }else{
+        success=dragged.type==='folder'?moveFolder(dragged.id,target.id,placement):moveNote(dragged.id,target.id,placement);
+      }
+      if(success){skipClickUntil=Date.now()+250;showToast(target.type==='pin'?'Folder pinned':target.type==='trash'?'Moved to Trash':dragged.type==='folder'?'Folder organized':'Note moved');}
     });
     sidebar.addEventListener('dragend',()=>{draggedItem=null;clearDragHints();});
     folderList.addEventListener('click',async e=>{
@@ -1436,7 +1464,7 @@
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
       const folder=e.target.closest('[data-folder],[data-rename-folder],[data-group-toggle]');
-      const trash=e.target.closest('[data-filter="trash"]');
+      const trash=e.target.closest('[data-filter="trash"],#trash-link');
       const editor=e.target.closest('#rich-editor,#note-title');
       const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
       if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
@@ -1459,11 +1487,11 @@
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"]');
+      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"],#trash-link');
       if(!target)return;
       clearTimeout(longTimer);
       longTimer=setTimeout(()=>{
-        if(target.dataset.filter==='trash')showMenu(e.clientX,e.clientY,trashOptions(),{});
+        if(target.dataset.filter==='trash'||target.id==='trash-link')showMenu(e.clientX,e.clientY,trashOptions(),{});
         else if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
         else if(target.dataset.noteId||target.dataset.tab){
           const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
