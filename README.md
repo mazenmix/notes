@@ -56,3 +56,16 @@ No proprietary iA Writer or Obsidian font files are bundled. The font is **Inter
 Made for MazenmiX.
 
 <!-- Redeploy trigger: refresh Cloudflare Pages Production environment bindings on 2026-10-11. -->
+
+
+## Rich notes (attachments, tables and code)
+
+The editor supports recoverable Trash, private attachments, resizable images,
+editable tables, and syntax-highlighted code blocks.
+
+To enable attachments in production, create a **private Cloudflare R2 bucket**
+(e.g. `mxnotes-attachments`) and add an R2 bucket binding named exactly
+`ATTACHMENTS` to the `mxnote` Pages project under **Settings → Bindings**.
+Redeploy production after saving. Existing owner authentication protects uploads
+and downloads; PDF and image files are not hosted at public R2 URLs. See
+[Cloudflare setup](cloudflare/README.md) for detailed instructions.
