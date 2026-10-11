@@ -1184,8 +1184,21 @@
       const next=pinnedFolders.filter(name=>name!==moving);
       const at=next.indexOf(destination);
       if(at<0)return;
+      const oldPositions=new Map([...folderList.querySelectorAll('[data-drag-folder]')]
+        .map(row=>[row.dataset.dragFolder,row.getBoundingClientRect().top]));
       next.splice(at+(before?0:1),0,moving);
-      pinnedFolders=next;saveUi();renderSidebar();showToast('Folder order saved');
+      pinnedFolders=next;saveUi();renderSidebar();
+      if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+        folderList.querySelectorAll('[data-drag-folder]').forEach(row=>{
+          const old=oldPositions.get(row.dataset.dragFolder);
+          if(old===undefined)return;
+          const delta=old-row.getBoundingClientRect().top;
+          if(Math.abs(delta)>1)row.animate?.([
+            {transform:'translateY('+delta+'px)'},{transform:'translateY(0)'}
+          ],{duration:255,easing:'cubic-bezier(.2,.75,.25,1)'});
+        });
+      }
+      showToast('Folder order saved');
     });
     folderList.addEventListener('dragend',()=>{draggingFolder=null;clearDragHints();});
     folderList.addEventListener('click',async e=>{
