@@ -624,6 +624,7 @@
     $('rich-editor').contentEditable=n?'true':'false';
     $('note-title').value=n?.title||'';
     $('rich-editor').innerHTML=editorMarkup(n);
+    hydrateAssets();highlightBlocks();
     $('mobile-title').innerHTML=esc(n?.title||'All notes')+' '+icon('chevron');
     $('breadcrumb').innerHTML=n?esc(folderLabel(n.folder))+' <span> / </span> '+esc(n.title):'Your notes';
     updateSummary();
@@ -642,6 +643,7 @@
   function commitEditor(){
     const n=current();if(!n)return;
     syncEditorHeading();
+    highlightBlocks();
     const html=safeHtml($('rich-editor').innerHTML);
     if(n.html!==html){n.html=html;n.updatedAt=stamp();persist();}
   }
@@ -761,6 +763,160 @@
     const top=rect.top-menu.offsetHeight-8;
     menu.style.top=(top>8?top:Math.min(rect.bottom+8,innerHeight-menu.offsetHeight-8))+'px';
   }
+
+  // Real private R2 attachments. Blob URLs never persist to D1 HTML.
+  const assetUrlCache=new Map(),assetInflight=new Map();
+  async function assetUrl(id){
+    if(assetUrlCache.has(id))return assetUrlCache.get(id);
+    if(assetInflight.has(id))return assetInflight.get(id);
+    const promise=(async()=>{
+      const response=await fetch('/api/attachment?id='+encodeURIComponent(id),{credentials:'same-origin'});
+      if(!response.ok)throw Error((await response.json().catch(()=>null))?.error||'Could not load attachment');
+      const url=URL.createObjectURL(await response.blob());assetUrlCache.set(id,url);return url;
+    })();
+    assetInflight.set(id,promise);
+    try{return await promise;}finally{assetInflight.delete(id);}
+  }
+  function hydrateAssets(){
+    const editor=$('rich-editor');
+    for(const figure of editor.querySelectorAll('figure[data-asset-id]')){
+      const id=figure.dataset.assetId,kind=figure.dataset.kind,width=Number(figure.dataset.width)||440;
+      figure.style.width=Math.min(900,Math.max(160,width))+'px';
+      if(kind==='image'){
+        const img=figure.querySelector('img[data-asset-image]');
+        if(img&&!img.src.startsWith('blob:'))assetUrl(id).then(url=>{
+          if(img.isConnected)img.src=url;
+        }).catch(error=>{if(img.isConnected)img.alt='File unavailable';console.warn(error);});
+      }
+      if(!figure.querySelector('[data-asset-controls]')){
+        const tools=document.createElement('div');tools.dataset.assetControls='true';
+        tools.contentEditable='false';
+        tools.innerHTML='<button type="button" data-asset-action="open" aria-label="Open attachment">↗</button>'+
+          (kind==='image'?'<button type="button" data-asset-action="shrink" aria-label="Make image smaller">−</button><button type="button" data-asset-action="grow" aria-label="Make image bigger">+</button>':'');
+        figure.append(tools);
+      }
+    }
+    for(const code of editor.querySelectorAll('pre[data-code-block]>code')){
+      code.spellcheck=false;code.contentEditable='true';
+    }
+  }
+  function insertAtCursor(markup){
+    const editor=$('rich-editor');
+    editor.focus({preventScroll:true});restoreSelection();
+    const selection=window.getSelection();
+    if(!selection?.rangeCount||!editor.contains(selection.anchorNode)){
+      editor.insertAdjacentHTML('beforeend',markup);
+    }else document.execCommand('insertHTML',false,markup);
+    hydrateAssets();onEditorInput();saveSelection();
+  }
+  async function uploadAttachment(file){
+    if(!ownerActive){settingsOpen();$('auth-feedback').textContent='Unlock your cloud vault before uploading attachments.';throw Error('Unlock cloud first');}
+    if(file.size>15*1024*1024)throw Error(file.name+': 15 MB limit per file');
+    const response=await fetch('/api/attachment',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':file.type||'application/octet-stream',
+        'X-Attachment-Name':encodeURIComponent(file.name)},body:file});
+    const data=await response.json().catch(()=>({error:'Upload failed'}));
+    if(!response.ok)throw Error(data.error||'Upload failed');
+    return data;
+  }
+  async function insertAttachments(files){
+    if(!files?.length)return;
+    saveSelection();
+    for(const file of files){
+      try{
+        showToast('Uploading '+file.name+'…');
+        const data=await uploadAttachment(file);
+        const image=/^image\/(png|jpeg|webp|gif|avif)$/i.test(data.mime);
+        const figure='<figure data-asset-id="'+esc(data.id)+'" data-kind="'+(image?'image':'file')+
+          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="440" contenteditable="false">'+
+          (image?'<img data-asset-image="'+esc(data.id)+'" alt="'+esc(data.name)+'">':'<span>📎 '+esc(data.name)+'</span>')+
+          '<figcaption>'+esc(data.name)+'</figcaption></figure><p><br></p>';
+        insertAtCursor(figure);showToast('Attached '+file.name);
+      }catch(error){showToast(error.message);}
+    }
+    $('attachment-input').value='';
+  }
+  function resizeAsset(figure,direction){
+    const current=Number(figure.dataset.width)||440;
+    figure.dataset.width=String(Math.max(160,Math.min(900,current+direction*80)));
+    figure.style.width=figure.dataset.width+'px';
+    onEditorInput();
+  }
+  // Format source with a limited, sandbox-free tokenizer; no external CDN.
+  const codeKeywords=new Set(('abstract and as async await break case catch class const continue def default del do elif else enum except export extends false finally fn for from func function global go if import in interface is lambda let local new nil none not null of or package pass private protected public raise return self static struct super switch then throw true try type typeof unless until use using val var void while with yield').split(' '));
+  function colorizeCode(code){
+    const source=code.textContent.replace(/\u00a0/g,' ');
+    if(source.length>45000)return;
+    const token=/\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][\w]*\b/g;
+    let out='',at=0;
+    for(const match of source.matchAll(token)){
+      out+=esc(source.slice(at,match.index));const word=match[0];
+      const kind=/^(\/\/|#|\/\*)/.test(word)?'comment':/^[\"']/.test(word)?'string':
+        /^\d/.test(word)?'number':codeKeywords.has(word.toLowerCase())?'keyword':/^(true|false|null|none|nil)$/i.test(word)?'literal':null;
+      out+=kind?'<span data-token="'+kind+'">'+esc(word)+'</span>':esc(word);
+      at=match.index+word.length;
+    }
+    out+=esc(source.slice(at));
+    if(code.innerHTML!==out)code.innerHTML=out;
+  }
+  function highlightBlocks(){
+    $('rich-editor').querySelectorAll('pre[data-code-block]>code').forEach(code=>{
+      if(!code.contains(document.activeElement)&&!code.contains(window.getSelection()?.anchorNode))
+        colorizeCode(code);
+    });
+  }
+  async function insertCodeBlock(){
+    saveSelection();
+    const answer=await ask('Insert code block','Language: javascript, typescript, python, html, css, json, sql, bash, etc.','javascript');
+    if(answer===null)return;
+    const lang=/^[a-z+#]{1,20}$/.test(answer.trim().toLowerCase())?answer.trim().toLowerCase():'text';
+    insertAtCursor('<pre data-code-block="1" data-language="'+esc(lang)+'"><code contenteditable="true" spellcheck="false">\n</code></pre><p><br></p>');
+    const code=[...$('rich-editor').querySelectorAll('pre[data-code-block] code')].at(-1);
+    if(code){code.focus();const range=document.createRange();range.selectNodeContents(code);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);}
+  }
+  async function insertTable(){
+    saveSelection();
+    const colValue=await ask('New table','How many columns? (1–12)','3');
+    if(colValue===null)return;
+    const rowValue=await ask('New table','How many rows? (1–30)','3');
+    if(rowValue===null)return;
+    const columns=Math.max(1,Math.min(12,Number.parseInt(colValue,10)||3));
+    const rows=Math.max(1,Math.min(30,Number.parseInt(rowValue,10)||3));
+    const html='<div class="table-scroll"><table data-note-table="1"><tbody>'+
+      Array.from({length:rows},(_,r)=>'<tr>'+Array.from({length:columns},()=>'<'+(r===0?'th':'td')+' data-col-width="120" data-row-height="38" style="width:120px;height:38px"><br></'+(r===0?'th':'td')+'>').join('')+'</tr>').join('')+
+      '</tbody></table></div><p><br></p>';
+    insertAtCursor(html);
+  }
+  function modifyTable(action,cell){
+    if(!cell?.isConnected)return;
+    const table=cell.closest('table');if(!table)return;
+    const row=cell.closest('tr'),allRows=[...table.querySelectorAll('tr')],index=allRows.indexOf(row),col=[...row.children].indexOf(cell);
+    const makeCell=(tag,width=120)=>{const el=document.createElement(tag);el.dataset.colWidth=String(width);el.dataset.rowHeight='38';el.style.width=width+'px';el.style.height='38px';el.innerHTML='<br>';return el;};
+    if(action==='table-row-add'){const clone=document.createElement('tr');for(const c of row.children)clone.append(makeCell('td',Number(c.dataset.colWidth)||120));row.after(clone);}
+    else if(action==='table-row-delete'){if(allRows.length<=1)return;row.remove();}
+    else if(action==='table-col-add'){for(const r of allRows){const target=r.children[col];if(target)target.after(makeCell(target.tagName.toLowerCase(),Number(target.dataset.colWidth)||120));}}
+    else if(action==='table-col-delete'){if(row.children.length<=1)return;for(const r of allRows)r.children[col]?.remove();}
+    else if(['table-wider','table-narrower'].includes(action)){
+      const next=Math.max(60,Math.min(800,(Number(cell.dataset.colWidth)||120)+(action==='table-wider'?40:-40)));
+      for(const r of allRows){const c=r.children[col];if(c){c.dataset.colWidth=String(next);c.style.width=next+'px';}}
+    }else if(['table-taller','table-shorter'].includes(action)){
+      const next=Math.max(28,Math.min(400,(Number(cell.dataset.rowHeight)||38)+(action==='table-taller'?18:-18)));
+      for(const c of row.children){c.dataset.rowHeight=String(next);c.style.height=next+'px';}
+    }else if(action==='table-delete'){table.closest('.table-scroll')?.remove();if(table.isConnected)table.remove();}
+    onEditorInput();
+  }
+  const tableOptions=()=>[
+    {ico:'plus',label:'Insert row below',action:'table-row-add'},
+    {ico:'plus',label:'Insert column right',action:'table-col-add'},
+    {ico:'arrow',label:'Wider column +40px',action:'table-wider'},
+    {ico:'arrow',label:'Narrower column −40px',action:'table-narrower'},
+    {ico:'arrow',label:'Taller row +18px',action:'table-taller'},
+    {ico:'arrow',label:'Shorter row −18px',action:'table-shorter'},
+    {divider:true},
+    {ico:'trash',label:'Delete this row',action:'table-row-delete'},
+    {ico:'trash',label:'Delete this column',action:'table-col-delete'},
+    {ico:'trash',label:'Delete table',action:'table-delete',danger:true}
+  ];
   function format(cmd,val=null){
     const editor=$('rich-editor');
     editor.focus({preventScroll:true});restoreSelection();
@@ -1181,8 +1337,22 @@
     const n=findNote(context?.id)||current(), folder=context?.folder;
     hideContext();
     if(action.startsWith('spell-apply-')){applyCorrection(context,Number(action.slice(12)));return;}
+    if(action.startsWith('table-')){modifyTable(action,context?.cell);return;}
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
+      case 'folder-restore':if(folder&&state.folderTrash?.[folder]?.deleted){
+        state.folderTrash[folder]={deleted:false,purged:false,updatedAt:stamp()};
+        markOrganizationChanged();renderAll();showToast('Folder restored');
+      }break;
+      case 'asset-open':if(context?.assetId){
+        try{
+          const url=await assetUrl(context.assetId);
+          const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener';link.download=context.assetName||'attachment';
+          link.click();
+        }catch(error){showToast(error.message);}
+      }break;
+      case 'asset-shrink':if(context?.figure)resizeAsset(context.figure,-1);break;
+      case 'asset-grow':if(context?.figure)resizeAsset(context.figure,1);break;
       case 'open-trash':setFilter('trash');break;
       case 'empty-trash':{
         const pending=state.notes.filter(item=>item.deleted&&!item.purged);
@@ -1700,6 +1870,12 @@
         if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
         const n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
       if(editor){
+        const cell=e.target.closest('#rich-editor td,#rich-editor th');
+        if(cell){showMenu(e.clientX,e.clientY,tableOptions(),{cell});return;}
+        const figure=e.target.closest('figure[data-asset-id]');
+        if(figure){showMenu(e.clientX,e.clientY,[{ico:'file',label:'Open / download attachment',action:'asset-open'},
+          ...(figure.dataset.kind==='image'?[{ico:'arrow',label:'Smaller image',action:'asset-shrink'},{ico:'arrow',label:'Larger image',action:'asset-grow'}]:[])],
+          {figure,assetId:figure.dataset.assetId,assetName:figure.dataset.name});return;}
         const input=editor.id==='note-title',start=input?editor.selectionStart:null,end=input?editor.selectionEnd:null;
         if(!input)saveSelection();
         const sel=window.getSelection(),hasRange=!!(sel?.rangeCount&&editor.contains(sel.anchorNode)&&editor.contains(sel.focusNode));
@@ -1742,6 +1918,26 @@
     const editor=$('rich-editor');
     editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
     editor.addEventListener('input',onEditorInput);
+    editor.addEventListener('focusout',e=>{if(e.target.closest('pre[data-code-block]')){highlightBlocks();onEditorInput();}});
+    [['attach-file',()=>{saveSelection();$('attachment-input').click();}],
+     ['insert-table',insertTable],['insert-code',insertCodeBlock]].forEach(([id,cb])=>{
+      $(id).addEventListener('pointerdown',event=>{if(event.pointerType!=='touch')event.preventDefault();saveSelection();});
+      $(id).addEventListener('click',cb);
+    });
+    $('attachment-input').addEventListener('change',e=>insertAttachments([...e.target.files]));
+    editor.addEventListener('click',async event=>{
+      const action=event.target.closest('[data-asset-action]'),figure=action?.closest('figure[data-asset-id]');
+      if(!action||!figure)return;
+      event.preventDefault();event.stopPropagation();
+      if(action.dataset.assetAction==='grow'||action.dataset.assetAction==='shrink'){
+        resizeAsset(figure,action.dataset.assetAction==='grow'?1:-1);return;
+      }
+      try{
+        const url=await assetUrl(figure.dataset.assetId);
+        const link=document.createElement('a');link.href=url;link.rel='noopener';link.download=figure.dataset.name||'attachment';
+        link.click();
+      }catch(error){showToast(error.message);}
+    });
     editor.addEventListener('focus',()=>{isEditing=true;document.body.classList.add('editing');});
     editor.addEventListener('blur',()=>{isEditing=false;document.body.classList.remove('editing');commitEditor();});
     editor.addEventListener('paste',e=>{
@@ -1766,6 +1962,10 @@
       if(e.target.closest('[data-checkbox]')){
         if(e.key===' '||e.key==='Enter'){e.preventDefault();toggleCheckbox(e.target.closest('[data-checkbox]'));}
         return;
+      }
+      const code=e.target.closest('pre[data-code-block]>code');
+      if(code&&(e.key==='Tab'||e.key==='Enter')){
+        e.preventDefault();document.execCommand('insertText',false,e.key==='Tab'?'  ':'\n');onEditorInput();return;
       }
       if(headingEnter(e))return;
       checklistEnter(e);
