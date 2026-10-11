@@ -61,7 +61,7 @@
         if(!/^[a-f0-9-]{36}$/i.test(id||''))return '';
         const name=(node.getAttribute('data-name')||'attachment').slice(0,180);
         const mime=(node.getAttribute('data-mime')||'application/octet-stream').slice(0,100);
-        const width=Math.max(160,Math.min(900,parseInt(node.getAttribute('data-width'),10)||240));
+        const width=Math.max(120,Math.min(900,parseInt(node.getAttribute('data-width'),10)||240));
         const isImage=node.getAttribute('data-kind')==='image';
         attrs=' data-asset-id="'+esc(id)+'" data-name="'+esc(name)+'" data-mime="'+esc(mime)+
           '" data-kind="'+(isImage?'image':'file')+'" data-width="'+width+'" contenteditable="false"';
@@ -838,7 +838,7 @@
     const editor=$('rich-editor');
     for(const figure of editor.querySelectorAll('figure[data-asset-id]')){
       const id=figure.dataset.assetId,kind=figure.dataset.kind,width=Number(figure.dataset.width)||240;
-      figure.style.width=Math.min(900,Math.max(160,width))+'px';
+      figure.style.width=Math.min(900,Math.max(120,width))+'px';
       if(kind==='image'){
         if(!resizedFigures.has(figure)&&typeof ResizeObserver==='function'){
           resizedFigures.add(figure);
@@ -847,7 +847,7 @@
             if(!figure.isConnected){observer.disconnect();return;}
             const width=Math.round(entries[0]?.contentRect?.width||0);
             if(initial){initial=false;return;}
-            if(width>=160&&Math.abs((Number(figure.dataset.width)||440)-width)>4){
+            if(width>=120&&Math.abs((Number(figure.dataset.width)||240)-width)>4){
               figure.dataset.width=String(Math.min(900,width));
               clearTimeout(figure._saveWidthTimer);
               figure._saveWidthTimer=setTimeout(()=>onEditorInput(),300);
@@ -1016,8 +1016,11 @@
         showToast('Uploading '+file.name+'…');
         const data=await uploadAttachment(file);
         const image=/^image\/(png|jpeg|webp|gif|avif)$/i.test(data.mime);
+        const available=$('rich-editor').clientWidth||window.innerWidth-32;
+        const imageWidth=image&&window.innerWidth<=760?
+          Math.max(120,Math.min(170,Math.floor((available-18)/2))):240;
         const figure='<figure data-asset-id="'+esc(data.id)+'" data-kind="'+(image?'image':'file')+
-          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="240" contenteditable="false">'+
+          '" data-name="'+esc(data.name)+'" data-mime="'+esc(data.mime)+'" data-width="'+imageWidth+'" contenteditable="false">'+
           (image?'<img data-asset-image="'+esc(data.id)+'" alt="Attached image">':'<span>📎 '+esc(data.name)+'</span>')+
           (image?'':'<figcaption>'+esc(data.name)+'</figcaption>')+'</figure><p><br></p>';
         if(insertAttachmentAtSavedCaret(figure,image))showToast('Attached '+file.name);
@@ -1028,7 +1031,7 @@
   }
   function resizeAsset(figure,direction){
     const current=Number(figure.dataset.width)||240;
-    figure.dataset.width=String(Math.max(160,Math.min(900,current+direction*80)));
+    figure.dataset.width=String(Math.max(120,Math.min(900,current+direction*80)));
     figure.style.width=figure.dataset.width+'px';
     onEditorInput();
   }
@@ -2192,15 +2195,18 @@
   }
   function bindRichText(){
     const editor=$('rich-editor');
+    let codeComposing=false;
+    editor.addEventListener('compositionstart',()=>{codeComposing=true;});
     editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
     editor.addEventListener('input',e=>{
       const anchor=window.getSelection()?.anchorNode;
       const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code')||
         e.target.closest?.('pre[data-code-block]>code');
-      if(code&&!e.isComposing)highlightCodeLive(code);
+      if(code&&!e.isComposing&&!codeComposing)highlightCodeLive(code);
       onEditorInput();
     });
     editor.addEventListener('compositionend',()=>{
+      codeComposing=false;
       const anchor=window.getSelection()?.anchorNode;
       const code=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest?.('pre[data-code-block]>code');
       if(code){highlightCodeLive(code);onEditorInput();}
@@ -2271,12 +2277,12 @@
       if(event.pointerType==='mouse'&&event.button!==0)return;
       event.preventDefault();event.stopPropagation();
       const pointerId=event.pointerId,startX=event.clientX,startWidth=bounds.width;
-      const maxWidth=Math.max(160,Math.min(900,editor.clientWidth-20));
+      const maxWidth=Math.max(120,Math.min(900,editor.clientWidth-20));
       let changed=false;
       figure.classList.add('image-resizing');
       const move=e=>{
         if(e.pointerId!==pointerId||!figure.isConnected)return;
-        const width=Math.round(Math.max(160,Math.min(maxWidth,startWidth+e.clientX-startX)));
+        const width=Math.round(Math.max(120,Math.min(maxWidth,startWidth+e.clientX-startX)));
         figure.style.width=width+'px';figure.dataset.width=String(width);changed=true;
       };
       const finish=e=>{
