@@ -914,7 +914,7 @@
     $('attachment-input').value='';
   }
   function resizeAsset(figure,direction){
-    const current=Number(figure.dataset.width)||440;
+    const current=Number(figure.dataset.width)||240;
     figure.dataset.width=String(Math.max(160,Math.min(900,current+direction*80)));
     figure.style.width=figure.dataset.width+'px';
     onEditorInput();
@@ -2022,17 +2022,52 @@
     });
     $('attachment-input').addEventListener('change',e=>insertAttachments([...e.target.files]));
     editor.addEventListener('click',async event=>{
+      const codeAction=event.target.closest('[data-code-action]');
+      if(codeAction){
+        event.preventDefault();event.stopPropagation();
+        const block=codeAction.closest('pre[data-code-block]');
+        if(block&&codeAction.dataset.codeAction==='remove'){block.remove();onEditorInput();}
+        return;
+      }
       const action=event.target.closest('[data-asset-action]'),figure=action?.closest('figure[data-asset-id]');
       if(!action||!figure)return;
       event.preventDefault();event.stopPropagation();
-      if(action.dataset.assetAction==='grow'||action.dataset.assetAction==='shrink'){
-        resizeAsset(figure,action.dataset.assetAction==='grow'?1:-1);return;
-      }
+      if(action.dataset.assetAction==='remove'){figure.remove();onEditorInput();return;}
       try{
         const url=await assetUrl(figure.dataset.assetId);
         const link=document.createElement('a');link.href=url;link.rel='noopener';link.download=figure.dataset.name||'attachment';
         link.click();
       }catch(error){showToast(error.message);}
+    });
+    // Invisible bottom-corner drag target: works with mouse, pencil and touch,
+    // and persists the chosen image width in the existing note HTML.
+    editor.addEventListener('pointerdown',event=>{
+      const figure=event.target.closest('figure[data-asset-id][data-kind="image"]');
+      if(!figure||event.target.closest('[data-asset-controls]'))return;
+      const bounds=figure.getBoundingClientRect();
+      if(event.clientX<bounds.right-28||event.clientY<bounds.bottom-28)return;
+      if(event.pointerType==='mouse'&&event.button!==0)return;
+      event.preventDefault();event.stopPropagation();
+      const pointerId=event.pointerId,startX=event.clientX,startWidth=bounds.width;
+      const maxWidth=Math.max(160,Math.min(900,editor.clientWidth-20));
+      let changed=false;
+      figure.classList.add('image-resizing');
+      const move=e=>{
+        if(e.pointerId!==pointerId||!figure.isConnected)return;
+        const width=Math.round(Math.max(160,Math.min(maxWidth,startWidth+e.clientX-startX)));
+        figure.style.width=width+'px';figure.dataset.width=String(width);changed=true;
+      };
+      const finish=e=>{
+        if(e.pointerId!==pointerId)return;
+        window.removeEventListener('pointermove',move);
+        window.removeEventListener('pointerup',finish);
+        window.removeEventListener('pointercancel',finish);
+        figure.classList.remove('image-resizing');
+        if(changed&&figure.isConnected)onEditorInput();
+      };
+      window.addEventListener('pointermove',move,{passive:true});
+      window.addEventListener('pointerup',finish);
+      window.addEventListener('pointercancel',finish);
     });
     editor.addEventListener('focus',()=>{isEditing=true;document.body.classList.add('editing');});
     editor.addEventListener('blur',()=>{isEditing=false;document.body.classList.remove('editing');commitEditor();});
