@@ -145,8 +145,10 @@
       'Cloud verification failed. Notes are still saved on this device. Check your network and press Sync now & verify.' :
       pending ? 'The latest local changes have not yet been confirmed on the cloud server.' :
       'Verified: the server returned the same saved workspace revision.';
-    $('sync-now').disabled=!connected||syncBusy;
-    $('sign-out').hidden=!session;
+    $('sync-now').disabled=syncBusy;
+    $('cloud-login-fields').hidden=connected;
+    $('sign-in').hidden=connected;
+    $('sign-out').hidden=!connected;
   }
   function toast(message) {
     const el=$('toast');
@@ -422,6 +424,7 @@
       const email=$('auth-email').value.trim(),password=$('auth-password').value;
       if(!email||!password)throw Error('Enter email and password');
       $('auth-feedback').textContent='Authenticating…';
+      if(cloudConfig?.url!==url || cloudConfig?.key!==key){session=null;lastVerified=null;}
       cloudConfig={url,key};storeCloud();
       const result=await api('/auth/v1/token?grant_type=password',{method:'POST',body:JSON.stringify({email,password})},false);
       if(!result.access_token||!result.user)throw Error('Authentication did not return a session');
@@ -521,7 +524,12 @@
     return success;
   }
   async function syncNow(){
-    if(!cloudReady()){settingsOpen();$('auth-feedback').textContent='Sign in to your cloud account before syncing.';return;}
+    if(!cloudReady()){
+      if(!$('settings-modal').open)settingsOpen();
+      $('auth-feedback').textContent='Sign in to your cloud account before syncing.';
+      toast('Cloud sync requires your sign-in');
+      return;
+    }
     if(syncBusy){toast('Sync already in progress');return;}
     clearTimeout(syncTimer);
     $('auth-feedback').textContent='Checking cloud sync…';
