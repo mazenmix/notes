@@ -349,10 +349,10 @@ body.panel-hidden .app-shell{grid-template-columns:58px 270px minmax(0,1fr)}
 }
 .editor-content,body.focus-mode .editor-content{
   max-width:none;width:100%;margin:0;
-  padding:36px clamp(26px,3.7vw,58px) 45px;
+  padding:36px clamp(20px,2.7vw,42px) 45px;
 }
 .note-title-input,.rich-editor{
-  width:100%;text-align:start;direction:auto;unicode-bidi:plaintext;
+  width:100%;text-align:start;unicode-bidi:plaintext;
   font-family:var(--writing-font);
 }
 .note-title-input{font-size:clamp(29px,2.6vw,39px);letter-spacing:-.035em;line-height:1.27}
