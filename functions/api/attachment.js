@@ -31,7 +31,10 @@ export async function onRequestPost({request,env}){
   const error=await authorize(request,env,true);if(error)return error;
   const size=Number(request.headers.get('content-length')||0);
   if(size>MAX_BYTES)return json({error:'15 MB maximum per file'},413);
-  const originalName=decodeURIComponent(request.headers.get('x-attachment-name')||'attachment').replace(/[\u0000-\u001f\u007f]/g,'').slice(0,180)||'attachment';
+  let originalName='attachment';
+  try{originalName=decodeURIComponent(request.headers.get('x-attachment-name')||'attachment')
+    .replace(/[\u0000-\u001f\u007f]/g,'').slice(0,180)||'attachment';}
+  catch(e){return json({error:'Invalid attachment filename'},400);}
   const rawMime=(request.headers.get('content-type')||'application/octet-stream').split(';')[0].trim().toLowerCase();
   const mime=/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(rawMime)?rawMime:'application/octet-stream';
   try{
