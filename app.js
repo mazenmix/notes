@@ -45,11 +45,14 @@
     }
     return Array.from(doc.body.firstElementChild?.childNodes||[]).map(walk).join('');
   }
-  function oldMarkdownToHtml(source) {
+  function oldMarkdownToHtml(source,lookup={}) {
     let out='',list=false;
     const inline=s=>esc(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
       .replace(/\*([^*]+)\*/g,'<em>$1</em>')
-      .replace(/\[\[([^\]]+)\]\]/g,(_,t)=>'<span>'+esc(t)+'</span>');
+      .replace(/\[\[([^\]]+)\]\]/g,(_,t)=>{
+        const id=lookup[t.trim().toLocaleLowerCase()];
+        return id?'<a data-note-id="'+esc(id)+'">'+esc(t)+'</a>':'<span>'+esc(t)+'</span>';
+      });
     String(source||'').split(/\r?\n/).forEach(line=>{
       const bullet=/^\s*[-*] (.*)$/.exec(line);
       if(bullet){if(!list){out+='<ul>';list=true;}out+='<li>'+inline(bullet[1])+'</li>';return;}
@@ -63,18 +66,21 @@
   }
   function normalize(x) {
     if(!x||!Array.isArray(x.notes))throw Error('Invalid backup');
+    const lookup={};
+    for(const n of x.notes){if(n?.title && typeof n.id==='string')lookup[String(n.title).trim().toLocaleLowerCase()]=n.id;}
     return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),
       folders:[...new Set((Array.isArray(x.folders)?x.folders:[]).filter(v=>typeof v==='string'&&v.length<100))],
       notes:x.notes.filter(n=>n&&typeof n.id==='string').slice(0,15000).map(n=>({
         id:n.id,title:String(n.title||'Untitled').slice(0,400),
         folder:String(n.folder||'Inbox').slice(0,100),
-        html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body)),
+        html:safeHtml(typeof n.html==='string'?n.html:oldMarkdownToHtml(n.body,lookup)),
         updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
         starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted
       }))
     };
   }
   let state;
+  let pristine=!localStorage.getItem(STORE);
   try{state=localStorage.getItem(STORE)?normalize(JSON.parse(localStorage.getItem(STORE))):normalize(seeded());}
   catch(e){console.warn('Local notes backup issue',e);state=normalize(seeded());}
   let ui;
@@ -100,6 +106,7 @@
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
   function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,panelHidden}));}
   function persist(remote=true){
+    pristine=false;
     state.updatedAt=stamp();
     try{localStorage.setItem(STORE,JSON.stringify(state));}
     catch(e){showToast('Storage is full. Export a backup from Settings.');return;}
@@ -194,12 +201,11 @@
       '<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
   }
   function updateSummary(){
-    const n=current();if(!n)return;
+    const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
     const text=plain(n.html).trim(),words=text?text.split(/\s+/u).length:0;
     $('word-count').textContent=words.toLocaleString()+' words';
     $('character-count').textContent=text.length.toLocaleString()+' characters';
     $('note-updated').textContent='Edited '+timeAgo(n.updatedAt);
-    $('tab-title')?.textContent; // existing other integrations can ignore this label
   }
   function renderEditor(){
     const n=current();
@@ -245,11 +251,18 @@
     if(cmd==='checklist'){
       document.execCommand('insertHTML',false,'<p data-checklist="1"><span data-checkbox="0" contenteditable="false">☐</span>&nbsp;</p>');
     }else if(cmd==='createLink'){
-      ask('Insert link','Paste an https:// link','https://').then(url=>{
-        if(!url)return;
-        if(!/^https?:\/\//i.test(url)){showToast('Use an http:// or https:// link');return;}
+      ask('Insert a link','Existing note title or https:// URL','').then(target=>{
+        if(!target?.trim())return;
+        const value=target.trim();
+        const linked=visible().find(n=>n.title.toLocaleLowerCase()===value.toLocaleLowerCase());
         editor.focus();restoreSelection();
-        document.execCommand('createLink',false,url);onEditorInput();
+        if(linked)document.execCommand('insertHTML',false,'<a data-note-id="'+esc(linked.id)+'">'+esc(linked.title)+'</a>');
+        else if(/^https?:\/\//i.test(value)){
+          const sel=window.getSelection();
+          if(sel?.toString())document.execCommand('createLink',false,value);
+          else document.execCommand('insertHTML',false,'<a href="'+esc(value)+'" target="_blank" rel="noopener noreferrer">'+esc(value)+'</a>');
+        }else{showToast('Enter an existing note title or a valid web URL');return;}
+        onEditorInput();
       });return;
     }else if(cmd==='style'){
       document.execCommand('formatBlock',false,val||'p');
@@ -371,7 +384,7 @@
     {ico:'download',label:'Export HTML',action:'export-note'},
     {divider:true},
     {ico:'graph',label:panelHidden?'Show right sidebar':'Hide right sidebar',action:panelHidden?'panel-graph':'panel-hide'},
-    {ico:'maximise',label:'Focus mode',action:'focus'},
+    {ico:'maximize',label:'Focus mode',action:'focus'},
     {ico:'refresh',label:'Sync now',action:'sync'},
     {ico:'trash',label:'Move to trash',action:'delete-note',danger:true}
   ];
@@ -397,7 +410,7 @@
       case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
-      case 'move-note':if(n){const name=await ask('Move note','Folder name',['Inbox',...state.folders].join(' · '));if(name===null)return;const f=['Inbox',...state.folders].find(x=>x.toLowerCase()===name.trim().toLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
+      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Inbox',...state.folders].join(' · '),n.folder);if(name===null)return;const f=['Inbox',...state.folders].find(x=>x.toLowerCase()===name.trim().toLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
       case 'copy-note-link':if(n){await navigator.clipboard.writeText('[['+n.title+']]');showToast('Note link copied');}break;
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
       case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
@@ -564,9 +577,9 @@
       const response=await api('/api/vault');
       revision=response.revision||0;
       if(response.workspace){
-        const merged=mergeWorkspaces(state,response.workspace);
+        const merged=pristine?normalize(response.workspace):mergeWorkspaces(state,response.workspace);
         if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)){
-          state=merged;localStorage.setItem(STORE,JSON.stringify(state));
+          state=merged;pristine=false;localStorage.setItem(STORE,JSON.stringify(state));
           if(!isEditing)renderAll();
           dirty=JSON.stringify(merged)!==JSON.stringify(response.workspace);
         }
