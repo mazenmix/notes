@@ -1351,3 +1351,130 @@ body.folder-tab-active .editor-footer{visibility:hidden}
 
 /* Respect touch-landscape iPad two-column navigation rather than desktop three panes. */
 body[data-ios-layout="true"] .desktop-notes-panel{display:none!important}
+
+/* MX Note • attachment cards, adjustable images, spreadsheet-lite and code editor */
+.writing-controls .extra-tool{
+  flex:0 0 38px;min-width:38px;height:35px;display:inline-grid;
+  place-items:center;font:650 15px/1 var(--sans);border-radius:9px;
+  color:var(--ink);cursor:pointer
+}
+.writing-controls .extra-tool:hover{background:var(--hover);color:var(--ink)}
+.writing-controls .code-tool{width:49px;min-width:49px;flex-basis:49px;letter-spacing:-1.3px;font-size:12px;font-family:"IBM Plex Mono",monospace}
+.writing-controls #insert-table{position:relative}
+.writing-controls #insert-table>svg{display:none}
+.writing-controls .tool-mini-grid{font-size:21px;font-weight:400;line-height:1}
+.rich-editor figure[data-asset-id]{
+  position:relative;width:min(440px,100%);max-width:100%;
+  margin:18px 0;padding:10px;border:1px solid #43515e;
+  border-radius:13px;background:#232a32;
+  box-shadow:0 3px 14px #0002;min-height:58px;
+  user-select:none;-webkit-user-select:none;
+  transition:border-color .15s,background .15s
+}
+.rich-editor figure[data-asset-id]:hover{border-color:#6d94b5;background:#28333f}
+.rich-editor figure[data-asset-id][data-kind="image"]{
+  resize:horizontal;overflow:auto;min-width:160px
+}
+.rich-editor figure[data-asset-id] img{
+  max-width:100%;width:100%;height:auto;display:block;
+  border-radius:7px;background:#1b2128
+}
+.rich-editor figure[data-asset-id][data-kind="file"]>span{
+  display:block;padding:12px 14px;color:#d4e4f2;font-size:13px;
+  white-space:normal;overflow-wrap:anywhere
+}
+.rich-editor figure[data-asset-id] figcaption{
+  font-size:11px;line-height:1.5;color:#9cabbc;
+  padding:8px 3px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.rich-editor figure [data-asset-controls]{
+  display:flex;position:absolute;right:10px;top:10px;z-index:2;
+  align-items:center;gap:3px;padding:3px;background:#13191eea;
+  border:1px solid #475767;border-radius:10px;box-shadow:0 3px 12px #0005
+}
+.rich-editor figure [data-asset-controls] button{
+  height:29px;width:29px;display:grid;place-items:center;border:0;border-radius:7px;
+  background:transparent;color:#e6eef7;cursor:pointer;
+  font:650 17px/1 var(--sans)
+}
+.rich-editor figure [data-asset-controls] button:hover{background:#3c556d}
+.rich-editor .table-scroll,.rich-editor div:has(>table[data-note-table]){
+  overflow-x:auto;max-width:100%;margin:18px 0;border-radius:10px;
+  scrollbar-width:thin;box-shadow:0 3px 12px #0001
+}
+.rich-editor table[data-note-table]{
+  border-spacing:0;border-collapse:separate;table-layout:fixed;
+  border:1px solid #475361;border-radius:9px;overflow:visible;
+  background:#1d252d;width:max-content;min-width:340px;
+  max-width:none;font-family:var(--writing-font);
+  font-size:calc(var(--editor-font-size) * .85)
+}
+.rich-editor table[data-note-table] tr{min-height:34px}
+.rich-editor table[data-note-table] td,
+.rich-editor table[data-note-table] th{
+  box-sizing:border-box;position:relative;
+  width:120px;min-width:60px;max-width:800px;min-height:28px;
+  padding:9px 12px;line-height:1.5;vertical-align:top;
+  color:#e0e9f2;border-right:1px solid #3e4a55;
+  border-bottom:1px solid #3e4a55;outline-offset:-2px;
+  overflow-wrap:anywhere;resize:both;overflow:auto
+}
+.rich-editor table[data-note-table] th{font-weight:650;background:#2b3b49;color:#e9f1fa}
+.rich-editor table[data-note-table] td:focus,
+.rich-editor table[data-note-table] th:focus{outline:1px solid #80aeca;background:#314256}
+.rich-editor table[data-note-table] tr:last-child>*{border-bottom:0}
+.rich-editor table[data-note-table] tr>*:last-child{border-right:0}
+.rich-editor pre[data-code-block]{
+  position:relative;direction:ltr;text-align:left;
+  background:#141b27!important;color:#d9e6fa;
+  border:1px solid #354457;border-radius:12px;
+  padding:39px 16px 16px;margin:19px 0;
+  max-width:100%;overflow-x:auto;line-height:1.65;
+  tab-size:2;white-space:pre;min-height:85px;
+  box-shadow:0 7px 27px #0002
+}
+.rich-editor pre[data-code-block]:before{
+  content:attr(data-language);position:absolute;top:0;left:0;right:0;height:30px;
+  display:flex;align-items:center;padding:0 15px;
+  background:#232d3e;border-bottom:1px solid #334157;
+  border-radius:11px 11px 0 0;
+  color:#a5bdd9;font:600 10px/30px "IBM Plex Mono",monospace;
+  text-transform:uppercase;letter-spacing:.8px;
+}
+.rich-editor pre[data-code-block]>code{
+  display:block;min-height:25px;outline:0;font:450 12.7px/1.75 "IBM Plex Mono","Courier New",monospace;
+  color:#d6e3f7;white-space:pre;word-break:normal;overflow-wrap:normal;
+  background:transparent;direction:ltr;text-align:left
+}
+.rich-editor pre[data-code-block]>code:focus{background:#192337}
+.rich-editor pre [data-token="keyword"]{color:#c99aff;font-weight:600}
+.rich-editor pre [data-token="comment"]{color:#6da18a;font-style:italic}
+.rich-editor pre [data-token="string"]{color:#f0b36b}
+.rich-editor pre [data-token="number"]{color:#7ed8d7}
+.rich-editor pre [data-token="literal"]{color:#88bbf4}
+.rich-editor pre [data-token="function"]{color:#a4ceec}
+[data-theme="light"] .rich-editor figure[data-asset-id],
+[data-theme="sepia"] .rich-editor figure[data-asset-id]{
+  background:#e7edf2;border-color:#b7cbdc;color:#30475b
+}
+[data-theme="light"] .rich-editor figure figcaption,
+[data-theme="sepia"] .rich-editor figure figcaption{color:#617b8d}
+[data-theme="light"] .rich-editor table[data-note-table],
+[data-theme="sepia"] .rich-editor table[data-note-table]{
+  background:#f8fafc;border-color:#b5c8d8
+}
+[data-theme="light"] .rich-editor table[data-note-table] td,
+[data-theme="sepia"] .rich-editor table[data-note-table] td{
+  color:#304758;border-color:#c5d3dc
+}
+[data-theme="light"] .rich-editor table[data-note-table] th,
+[data-theme="sepia"] .rich-editor table[data-note-table] th{
+  color:#29435a;background:#dce7f0;border-color:#c5d3dc
+}
+@media(max-width:1100px),(any-pointer:coarse) and (max-width:1500px){
+  .rich-editor figure[data-asset-id]{max-width:100%;width:100%}
+  .rich-editor pre[data-code-block]{font-size:12px;padding:38px 12px 13px}
+  .rich-editor pre[data-code-block]>code{font-size:12px}
+  .rich-editor .table-scroll,.rich-editor div:has(>table[data-note-table]){width:100%}
+  .writing-controls .extra-tool{flex:0 0 38px}
+}
