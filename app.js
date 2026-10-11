@@ -89,9 +89,9 @@
   try{ui=JSON.parse(localStorage.getItem(VIEW)||'{}')||{};}catch(e){ui={};}
   const folderKey=folder=>'folder:'+folder;
   const isFolderTab=id=>typeof id==='string'&&id.startsWith('folder:');
-  const tabExists=id=>isFolderTab(id)?(id==='folder:Inbox'||state.folders.includes(id.slice(7))):!!state.notes.find(n=>n.id===id&&!n.deleted&&!n.purged);
+  const tabExists=id=>isFolderTab(id)?(id==='folder:Inbox'||state.folders.includes(id.slice(7))):!!state.notes.find(n=>n.id===id&&!n.purged);
   let tabs=(Array.isArray(ui.tabs)?ui.tabs:[]).filter(tabExists);
-  let selected=state.notes.some(n=>n.id===ui.selected)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
+  let selected=state.notes.some(n=>n.id===ui.selected&&!n.purged)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
   let activeTab=tabExists(ui.activeTab)?ui.activeTab:selected;
   if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
   let filter='all',search='',theme=localStorage.getItem(THEME)==='light'?'light':'dark';
@@ -282,7 +282,16 @@
     updateSummary();
     $('editor-scroll').scrollTop=0;
   }
-  function renderAll(){tabs=tabs.filter(tabExists);renderSidebar();noteTabs();renderEditor();updateCloudUI();}
+  function renderAll(){
+    tabs=tabs.filter(tabExists);
+    if(!tabExists(activeTab)){
+      activeTab=tabs.at(-1)||visible()[0]?.id||null;
+      if(activeTab&&!tabs.includes(activeTab))tabs.push(activeTab);
+    }
+    if(!state.notes.some(n=>n.id===selected&&!n.purged))selected=visible()[0]?.id||null;
+    if(activeTab&&!isFolderTab(activeTab))selected=activeTab;
+    renderSidebar();noteTabs();renderEditor();updateCloudUI();
+  }
   function commitEditor(){
     const n=current();if(!n)return;
     const html=safeHtml($('rich-editor').innerHTML);
