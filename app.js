@@ -1131,7 +1131,8 @@
     });
   }
   function hideContext(){$('context-menu').hidden=true;$('context-menu').classList.remove('visible');menuContext=null;}
-  const noteOptions=n=>[
+  const noteOptions=n=>n.deleted?
+    [{ico:'refresh',label:'Restore to original folder',action:'restore-note'}]:[
     {ico:'edit',label:'Rename',action:'rename-note'},
     {ico:'file',label:'Open in tab',action:'open-note'},
     {ico:'star',label:n.starred?'Remove favorite':'Add to favorites',action:'star-note'},
@@ -1140,10 +1141,23 @@
     {divider:true},
     {ico:'archive',label:n.archived?'Unarchive':'Archive',action:'archive-note'},
     {ico:'download',label:'Export HTML',action:'export-note'},
-    ...(n.deleted?[{ico:'refresh',label:'Restore from Trash',action:'restore-note'}]:
-      [{ico:'trash',label:'Move to Trash',action:'delete-note',danger:true}])
+    {ico:'trash',label:'Move to Trash',action:'delete-note',danger:true}
   ];
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
+  const deletedFolderOptions=()=>[{ico:'refresh',label:'Restore folder to original location',action:'folder-restore'}];
+  function restoreFolderChain(folder){
+    let changed=false;
+    const seen=new Set();
+    for(let name=folder;name&&name!=='Inbox'&&!seen.has(name);name=folderParent(name)){
+      seen.add(name);
+      if(!state.folders.includes(name)||state.folderTrash?.[name]?.purged)break;
+      if(state.folderTrash?.[name]?.deleted){
+        state.folderTrash[name]={deleted:false,purged:false,updatedAt:stamp()};
+        changed=true;
+      }
+    }
+    return changed;
+  }
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
     {ico:'star',label:pinnedFolders.includes(folder)?'Unpin folder':'Pin folder',action:pinnedFolders.includes(folder)?'folder-unpin':'folder-pin'},
@@ -1488,9 +1502,11 @@
     }
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
-      case 'folder-restore':if(folder&&state.folderTrash?.[folder]?.deleted){
-        state.folderTrash[folder]={deleted:false,purged:false,updatedAt:stamp()};
-        markOrganizationChanged();renderAll();showToast('Folder restored');
+      case 'folder-restore':if(folder&&state.folderTrash?.[folder]?.deleted&&!state.folderTrash?.[folder]?.purged){
+        if(restoreFolderChain(folder)){
+          markOrganizationChanged();renderAll();
+          showToast('Folder restored to its original location');
+        }
       }break;
       case 'asset-open':if(context?.assetId){
         try{
@@ -1545,7 +1561,16 @@
       case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}if(moveNote(n.id,f))showToast('Note moved');}break;
       case 'copy-note-link':if(n){await navigator.clipboard.writeText('[['+n.title+']]');showToast('Note link copied');}break;
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
-      case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
+      case 'restore-note':{
+        const target=context?.id?findNote(context.id):null;
+        if(!target?.deleted||target.purged)break;
+        if(target.folder!=='Inbox'&&!state.folders.includes(target.folder))target.folder='Inbox';
+        const restoredParent=restoreFolderChain(target.folder);
+        target.deleted=false;target.updatedAt=stamp();
+        if(restoredParent)markOrganizationChanged();
+        else persist();
+        renderAll();showToast('Note restored to '+folderLabel(target.folder));
+      }break;
       case 'delete-note':if(n){
         if(n.deleted){showToast('Use Empty Trash to delete permanently');return;}
         n.deleted=true;n.updatedAt=stamp();
@@ -1995,14 +2020,19 @@
       if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
+      const restoredFolder=e.target.closest('[data-restore-folder]');
+      if(restoredFolder){
+        showMenu(e.clientX,e.clientY,deletedFolderOptions(),{folder:restoredFolder.dataset.restoreFolder});
+        return;
+      }
       const folder=e.target.closest('[data-folder],[data-rename-folder],[data-group-toggle]');
       const trash=e.target.closest('[data-filter="trash"],#trash-link');
       const editor=e.target.closest('#rich-editor,#note-title');
-      const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
+      const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note],[data-desktop-note],[data-ios-note]');
       if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
       if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder||folder.dataset.groupToggle;
         showMenu(e.clientX,e.clientY,folderOptions(name),{folder:name});return;}
-      if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote;
+      if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote||note.dataset.desktopNote||note.dataset.iosNote;
         if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
         const n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
       if(editor){
@@ -2027,7 +2057,7 @@
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"],#trash-link');
+      const target=e.target.closest('[data-restore-folder],[data-folder],[data-note-id],[data-tab],[data-desktop-note],[data-ios-note],[data-filter="trash"],#trash-link');
       const tableCell=e.target.closest('#rich-editor td,#rich-editor th');
       const codeBlock=e.target.closest('#rich-editor pre[data-code-block]');
       if(!target&&!tableCell&&!codeBlock)return;
@@ -2035,10 +2065,11 @@
       longTimer=setTimeout(()=>{
         if(tableCell)showMenu(e.clientX,e.clientY,tableOptions(),{cell:tableCell});
         else if(codeBlock)showMenu(e.clientX,e.clientY,codeOptions(),{codeBlock});
+        else if(target.dataset.restoreFolder)showMenu(e.clientX,e.clientY,deletedFolderOptions(),{folder:target.dataset.restoreFolder});
         else if(target.dataset.filter==='trash'||target.id==='trash-link')showMenu(e.clientX,e.clientY,trashOptions(),{});
         else if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
-        else if(target.dataset.noteId||target.dataset.tab){
-          const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
+        else if(target.dataset.noteId||target.dataset.tab||target.dataset.desktopNote||target.dataset.iosNote){
+          const id=target.dataset.noteId||target.dataset.tab||target.dataset.desktopNote||target.dataset.iosNote,n=findNote(id);
           if(isFolderTab(id))showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});
           else if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
         }
