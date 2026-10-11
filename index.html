@@ -99,6 +99,9 @@
         <button class="format-btn" data-command="checklist" title="Checklist" aria-label="Checklist"><svg><use href="#i-check"/></svg></button>
         <button class="format-btn" data-command="createLink" title="Insert link" aria-label="Insert link"><svg><use href="#i-link"/></svg></button>
         <span class="format-divider"></span>
+        <button class="format-btn color-tool" id="font-color-picker" type="button" aria-label="Text color" title="Text color" aria-haspopup="true" aria-expanded="false"><span class="color-tool-letter">A</span><span class="color-tool-underline"></span></button>
+        <button class="format-btn color-tool highlight-tool" id="highlight-picker" type="button" aria-label="Highlight color" title="Highlight color" aria-haspopup="true" aria-expanded="false"><span class="color-tool-marker">▰</span><span class="color-tool-underline"></span></button>
+        <span class="format-divider"></span>
         <label class="toolbar-select-wrap" for="writing-font"><span class="sr-only">Writing font</span><select id="writing-font" title="Writing font" aria-label="Writing font">
           <option value="system">System</option><option value="obsidian">Inter</option>
           <option value="arial">Arial</option><option value="calibri">Calibri</option>
@@ -125,6 +128,7 @@
   </div>
   <div class="overlay" id="overlay" hidden></div>
   <div class="menu-popover" id="context-menu" role="menu" hidden></div>
+  <div class="color-popover" id="color-menu" role="group" aria-label="Writing colors" hidden></div>
   <div class="menu-popover style-popover" id="style-menu" hidden>
     <button data-style="p" role="menuitem">Body text</button>
     <button data-style="h1" role="menuitem">Title</button>
@@ -134,12 +138,10 @@
   </div>
   <dialog class="modal" id="settings-modal" aria-labelledby="settings-title">
     <div class="modal-head"><div><span class="modal-kicker">MX NOTE</span><h2 id="settings-title">Settings</h2></div><button class="icon-button" id="settings-close" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
-    <div class="cloud-state" id="cloud-state">Local-only mode</div>
     <section class="sync-verification" aria-label="Cloud sync verification">
-      <div class="verify-header"><svg><use href="#i-shield"/></svg><span>Cloud sync</span></div>
+      <div class="verify-header"><span>Cloud sync</span></div>
       <div class="verify-line"><span>Connection</span><strong id="sync-connection">Local only</strong></div>
       <div class="verify-line"><span>Last confirmed cloud sync</span><strong id="last-sync-confirmed">Never</strong></div>
-      <div class="verify-line"><span>Unsynced changes</span><strong id="unsynced-count">Not connected</strong></div>
       <button class="sync-now-button" id="sync-now" type="button"><svg><use href="#i-refresh"/></svg> Sync now & verify</button>
     </section>
     <section class="autocorrect-setting" aria-label="Auto correction">
