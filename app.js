@@ -49,6 +49,7 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
+      if(['p','h1','h2','div'].includes(t)&&node.getAttribute('data-note-title')==='1')attrs+=' data-note-title="1"';
       if(t==='span'||t==='font'){
         const ink=safePaint(node.style?.color||node.getAttribute('color'),textColors);
         const mark=safePaint(node.style?.backgroundColor||node.getAttribute('bgcolor'),markerColors);
@@ -213,7 +214,7 @@
     commitEditor();
     const n={id:uuid(),title:'Untitled',folder,html:'',updatedAt:stamp(),starred:false,archived:false,deleted:false};
     state.notes.push(n);selected=n.id;activeTab=n.id;if(!tabs.includes(n.id))tabs.push(n.id);filter='all';search='';$('search').value='';
-    persist();saveUi();renderAll();closePanels();$('note-title').focus();$('note-title').select();
+    persist();saveUi();renderAll();closePanels();focusNoteHeading();
   }
   function touchNote(n){n.updatedAt=stamp();persist();renderSidebar();noteTabs();updateSummary();}
   function closePanels(){
@@ -281,6 +282,49 @@
       (drafts.length?'<details class="folder-drafts"><summary>'+icon('chevron')+' Untitled drafts <span>'+drafts.length+'</span></summary><div class="folder-view-list">'+drafts.map(card).join('')+'</div></details>':'')+
       (!all.length?'<div class="folder-empty">This folder is empty. Create a note to get started.</div>':'');
   }
+
+  function editorMarkup(n){
+    if(!n)return '';
+    const markup=safeHtml(n.html||''),container=document.createElement('div');
+    container.innerHTML=markup;
+    const first=container.firstElementChild,title=(n.title||'').trim();
+    if(first?.getAttribute('data-note-title')==='1')return markup;
+    if(title&&title!=='Untitled'){
+      if(first&&['H1','H2','P','DIV'].includes(first.tagName)&&first.textContent.trim()===title){
+        first.setAttribute('data-note-title','1');return container.innerHTML;
+      }
+      return '<h1 data-note-title="1">'+esc(title)+'</h1>'+markup;
+    }
+    if(first&&['H1','H2','P','DIV'].includes(first.tagName)){
+      first.setAttribute('data-note-title','1');return container.innerHTML;
+    }
+    return '<h1 data-note-title="1"><br></h1>'+markup;
+  }
+  function editorFirstLine(){
+    const editor=$('rich-editor'),first=editor.firstElementChild;
+    const content=first?(first.innerText||first.textContent||''):(editor.innerText||'').split('\n')[0];
+    return String(content).split(/\r?\n/u)[0].replace(/[\u00a0\u200b\u200c\u200d]/gu,' ').trim().slice(0,120)||'Untitled';
+  }
+  function syncEditorHeading(){
+    const editor=$('rich-editor'),first=editor.firstElementChild;
+    if(first&&['H1','H2','P','DIV'].includes(first.tagName))first.dataset.noteTitle='1';
+    const n=current();if(!n)return;
+    const name=editorFirstLine();
+    if(n.title!==name){
+      n.title=name;noteTabs();
+      $('mobile-title').innerHTML=esc(name)+' '+icon('chevron');
+    }
+  }
+  function focusNoteHeading(select=false){
+    const editor=$('rich-editor'),heading=editor.querySelector('[data-note-title="1"]')||editor.firstElementChild;
+    editor.focus({preventScroll:true});
+    if(!heading)return;
+    const selection=window.getSelection(),range=document.createRange();
+    range.selectNodeContents(heading);range.collapse(false);
+    selection.removeAllRanges();selection.addRange(range);
+    if(select&&heading.textContent.trim()){range.selectNodeContents(heading);selection.removeAllRanges();selection.addRange(range);}
+    saveSelection();
+  }
   function renderEditor(){
     const isFolder=isFolderTab(activeTab);
     $('folder-view').hidden=!isFolder;
@@ -294,7 +338,7 @@
     $('note-title').disabled=!n;
     $('rich-editor').contentEditable=n?'true':'false';
     $('note-title').value=n?.title||'';
-    $('rich-editor').innerHTML=n?.html||'';
+    $('rich-editor').innerHTML=editorMarkup(n);
     $('mobile-title').innerHTML=esc(n?.title||'All notes')+' '+icon('chevron');
     $('breadcrumb').innerHTML=n?esc(folderLabel(n.folder))+' <span> / </span> '+esc(n.title):'Your notes';
     updateSummary();
@@ -312,11 +356,13 @@
   }
   function commitEditor(){
     const n=current();if(!n)return;
+    syncEditorHeading();
     const html=safeHtml($('rich-editor').innerHTML);
     if(n.html!==html){n.html=html;n.updatedAt=stamp();persist();}
   }
   function onEditorInput(){
     const n=current();if(!n)return;
+    syncEditorHeading();
     n.html=safeHtml($('rich-editor').innerHTML);
     n.updatedAt=stamp();persist();updateSummary();
     // Keep the editor and cursor completely untouched while typing.
@@ -829,7 +875,7 @@
       case 'close-tab':if(activeTab)closeTab(activeTab);break;
       case 'close-other-tabs':if(activeTab){tabs=[activeTab];saveUi();noteTabs();}break;
       case 'restore-tab':if(lastClosedTab&&tabExists(lastClosedTab)){openTab(lastClosedTab);lastClosedTab=null;saveUi();}break;
-      case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
+      case 'rename-note':if(n){openNote(n.id);focusNoteHeading(true);}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
       case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
@@ -1271,7 +1317,6 @@
       state.folders.push(f);state.foldersUpdatedAt=stamp();pinnedFolders.push(f);persist();saveUi();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
-    $('note-title').addEventListener('input',onTitleInput);
     $('open-sidebar').addEventListener('click',()=>openSidebar());
     $('mobile-title').addEventListener('click',()=>openSidebar());
     $('close-sidebar').addEventListener('click',closePanels);
