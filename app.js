@@ -376,7 +376,7 @@
     const label=folderLabel(name);
     const childMarkup=children.length&&expanded?'<div class="ios-subfolders">'+children.map(c=>iosFolderRow(c,depth+1,visited)).join('')+'</div>':'';
     return '<div class="ios-folder-entry" data-ios-tree="'+esc(name)+'">'+
-      '<div class="ios-folder-line" style="--ios-indent:'+depth+'">'+
+      '<div class="ios-folder-line '+(iosFolder===name&&iosScreen==='list'?'ios-current':'')+'" style="--ios-indent:'+depth+'">'+
         '<button type="button" class="ios-folder-open" data-ios-open="'+esc(name)+'" aria-label="Open '+esc(label)+'">'+icon('folder')+
           '<span class="ios-folder-name" dir="auto">'+esc(label)+'</span><span class="ios-folder-count">'+iosFolderCount(name)+'</span>'+
           '<span class="ios-arrow">'+icon('chevron')+'</span></button>'+
@@ -418,10 +418,10 @@
     if(!active)return;
     $('ios-edit-folders').textContent=iosEditMode?'Done':'Edit';
     $('ios-edit-folders').setAttribute('aria-pressed',String(iosEditMode));
-    const rootOpen='<div class="ios-folder-entry"><div class="ios-folder-line">'+
+    const rootOpen='<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder==='all'&&iosScreen==='list'?'ios-current':'')+'">'+
       '<button type="button" class="ios-folder-open" data-ios-open="all">'+icon('folder')+
       '<span class="ios-folder-name">All Notes</span><span class="ios-folder-count">'+iosFolderCount('all')+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>';
-    const inbox='<div class="ios-folder-entry"><div class="ios-folder-line">'+
+    const inbox='<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder==='Inbox'&&iosScreen==='list'?'ios-current':'')+'">'+
       '<button type="button" class="ios-folder-open" data-ios-open="Inbox">'+icon('folder')+
       '<span class="ios-folder-name">Notes</span><span class="ios-folder-count">'+iosFolderCount('Inbox')+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>';
     const roots=folderChildren(null);
