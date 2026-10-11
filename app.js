@@ -658,9 +658,7 @@
   }
   function bindDelegation(){
     $('quick-links').addEventListener('click',e=>{
-      const b=e.target.closest('[data-filter]');if(!b)return;
-      if(b.dataset.filter==='graph'){showPanel('graph');return;}
-      setFilter(b.dataset.filter);
+      const b=e.target.closest('[data-filter]');if(b)setFilter(b.dataset.filter);
     });
     $('folder-list').addEventListener('click',e=>{
       if(Date.now()<skipClickUntil)return;
@@ -668,27 +666,51 @@
     });
     $('note-list').addEventListener('click',e=>{
       if(Date.now()<skipClickUntil)return;
+      const group=e.target.closest('[data-group-toggle]');
+      if(group){const name=group.dataset.groupToggle;
+        if(collapsedGroups.has(name))collapsedGroups.delete(name);else collapsedGroups.add(name);
+        saveUi();renderSidebar();return;
+      }
+      const expand=e.target.closest('[data-expand-note]');
+      if(expand){const id=expand.dataset.expandNote;
+        if(expandedNotes.has(id))expandedNotes.delete(id);else expandedNotes.add(id);
+        saveUi();renderSidebar();return;
+      }
       const b=e.target.closest('[data-note-id]');if(b)openNote(b.dataset.noteId);
+    });
+    $('toggle-notes-list').addEventListener('click',()=>{
+      notesCollapsed=!notesCollapsed;saveUi();renderSidebar();
     });
     $('open-tabs').addEventListener('click',e=>{
       const close=e.target.closest('[data-close-tab]');if(close){closeTab(close.dataset.closeTab);return;}
       const tab=e.target.closest('[data-tab]');if(tab)openNote(tab.dataset.tab);
     });
-    $('insights-content').addEventListener('click',e=>{
-      const jump=e.target.closest('[data-jump]');if(jump)openNote(jump.dataset.jump);
-    });
-    // Right click and mobile long press share one exact same action dispatcher.
+    // A custom in-app context menu replaces the browser menu throughout the workspace.
+    // Shift + right-click remains available for native browser spelling suggestions.
     document.addEventListener('contextmenu',e=>{
+      if(e.shiftKey)return;
+      if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
+      if(!e.target.closest('.app-shell'))return;
+      e.preventDefault();
       const folder=e.target.closest('[data-folder]');
       const note=e.target.closest('[data-note-id],[data-tab]');
-      const insight=e.target.closest('.insights,.insights-tabs');
-      if(folder){e.preventDefault();showMenu(e.clientX,e.clientY,folderOptions(folder.dataset.folder),{folder:folder.dataset.folder});}
-      else if(note){e.preventDefault();const id=note.dataset.noteId||note.dataset.tab,n=findNote(id);if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});}
-      else if(insight){e.preventDefault();showMenu(e.clientX,e.clientY,panelOptions(),{panel:true});}
+      const editor=e.target.closest('#rich-editor,#note-title');
+      if(folder){showMenu(e.clientX,e.clientY,folderOptions(folder.dataset.folder),{folder:folder.dataset.folder});return;}
+      if(note){const id=note.dataset.noteId||note.dataset.tab,n=findNote(id);
+        if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});return;}
+      if(editor){
+        const input=editor.id==='note-title',start=input?editor.selectionStart:null,end=input?editor.selectionEnd:null;
+        if(!input)saveSelection();
+        const sel=window.getSelection(),hasRange=!!(sel?.rangeCount&&editor.contains(sel.anchorNode)&&editor.contains(sel.focusNode));
+        const selectionText=input?editor.value.slice(start,end):(hasRange?sel.toString():'');
+        showMenu(e.clientX,e.clientY,editorOptions(!!selectionText),{id:selected,input,start,end,selectionText});return;
+      }
+      if(e.target.closest('.desktop-tabbar')){showMenu(e.clientX,e.clientY,tabBlankOptions(),{id:selected});return;}
+      showMenu(e.clientX,e.clientY,appOptions(),{id:selected});
     });
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
-      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],.insights-tabs');
+      const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-group-toggle]');
       if(!target)return;
       clearTimeout(longTimer);
       longTimer=setTimeout(()=>{
@@ -696,7 +718,7 @@
         else if(target.dataset.noteId||target.dataset.tab){
           const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
           if(n)showMenu(e.clientX,e.clientY,noteOptions(n),{id});
-        }else showMenu(e.clientX,e.clientY,panelOptions(),{panel:true});
+        }else if(target.dataset.groupToggle)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.groupToggle),{folder:target.dataset.groupToggle});
         skipClickUntil=Date.now()+650;navigator.vibrate?.(12);
       },520);
     };
@@ -743,7 +765,7 @@
     });
   }
   function init(){
-    document.body.classList.toggle('panel-hidden',panelHidden);applyTheme();renderAll();
+    applyTheme();renderAll();
     bindDelegation();bindRichText();
     $('new-note').addEventListener('click',()=>newNote());
     $('tab-new').addEventListener('click',()=>newNote());
@@ -760,27 +782,24 @@
     $('open-sidebar').addEventListener('click',()=>openSidebar());
     $('mobile-title').addEventListener('click',()=>openSidebar());
     $('close-sidebar').addEventListener('click',closePanels);
-    $('close-insights').addEventListener('click',hidePanel);
-    $('hide-insights').addEventListener('click',hidePanel);
-    $('toggle-insights').addEventListener('click',togglePanel);
     $('overlay').addEventListener('click',closePanels);
     $('more-button').addEventListener('click',e=>{
       const r=$('more-button').getBoundingClientRect();
       showMenu(r.right-240,r.bottom+7,appOptions(),{id:selected});
     });
-    document.querySelectorAll('.insights-tab').forEach(b=>b.addEventListener('click',()=>showPanel(b.dataset.panel)));
     $('rail-notes').addEventListener('click',()=>{setFilter('all');openSidebar();});
     $('rail-star').addEventListener('click',()=>{setFilter('star');openSidebar();});
-    $('rail-graph').addEventListener('click',()=>showPanel('graph'));
     document.querySelectorAll('[data-mobile]').forEach(b=>b.addEventListener('click',()=>{
       const action=b.dataset.mobile;
       if(action==='notes')openSidebar();
+      else if(action==='star'){setFilter('star');openSidebar();}
       else if(action==='search')openSidebar(true);
-      else showPanel(action);
+      else if(action==='settings')settingsOpen();
     }));
     $('focus-button').addEventListener('click',toggleFocus);
     $('theme-toggle').addEventListener('click',toggleTheme);
     $('settings-theme-toggle').addEventListener('click',toggleTheme);
+    $('writing-font').addEventListener('change',e=>{writingFont=e.target.value;localStorage.setItem(FONT,writingFont);applyTheme();showToast('Writing font updated');});
     $('cloud-button').addEventListener('click',settingsOpen);
     $('sidebar-cloud').addEventListener('click',settingsOpen);
     $('rail-settings').addEventListener('click',settingsOpen);
