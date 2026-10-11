@@ -456,7 +456,13 @@
     {divider:true},
     {ico:'trash',label:'Delete folder',action:'folder-delete',danger:true}
   ];
-  const appOptions=()=>[
+  const appOptions=()=>isFolderTab(activeTab)?[
+    {ico:'plus',label:'New note in this folder',action:'active-folder-new'},
+    {ico:'edit',label:'Rename this folder',action:'active-folder-rename'},
+    {ico:'x',label:'Close folder tab',action:'close-tab'},
+    {divider:true},
+    {ico:'refresh',label:'Sync now',action:'sync'}
+  ]:[
     {ico:'plus',label:'New note',action:'new-note'},
     {ico:'folder',label:'New folder',action:'new-folder'},
     {divider:true},
@@ -771,6 +777,13 @@
       }break;
       case 'new-note':newNote();break;
       case 'new-folder':$('new-folder').click();break;
+      case 'active-folder-new':if(isFolderTab(activeTab))newNote(activeTab.slice(7));break;
+      case 'active-folder-rename':if(isFolderTab(activeTab)){
+        const old=activeTab.slice(7);
+        if(old==='Inbox'){showToast('Inbox cannot be renamed');break;}
+        const name=await ask('Rename folder','Folder name',old);
+        if(name!==null)folderRename(old,name.trim());
+      }break;
       case 'settings':settingsOpen();break;
       case 'close-tab':if(activeTab)closeTab(activeTab);break;
       case 'close-other-tabs':if(activeTab){tabs=[activeTab];saveUi();noteTabs();}break;
