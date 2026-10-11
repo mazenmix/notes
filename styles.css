@@ -1631,3 +1631,191 @@ body[data-ios-layout="true"] .desktop-notes-panel{display:none!important}
   .rich-editor pre[data-code-block]{border-width:1px!important}
   .rich-editor figure[data-asset-id][data-kind="image"]{border-width:1px!important}
 }
+
+/* MX Note • media gallery, responsive theme strokes and unified editing controls */
+:root {
+  --mx-media-stroke:#556476;
+  --mx-code-stroke:#566578;
+  --mx-code-surface:#19222f;
+  --mx-media-control-bg:#24313de8;
+  --mx-media-control-border:#617184;
+  --mx-media-control-ink:#e5edf5;
+  --mx-media-grip:#aac4db;
+}
+:root[data-theme="dark"] {
+  --mx-media-stroke:#5e6a79;--mx-code-stroke:#627185;
+  --mx-code-surface:#19222f;--mx-media-control-bg:#26323fef;
+  --mx-media-control-border:#6c7b8e;--mx-media-control-ink:#ecf2f8;--mx-media-grip:#b2c5d6;
+}
+:root[data-theme="light"] {
+  --mx-media-stroke:#a7b6c5;--mx-code-stroke:#aebfce;
+  --mx-code-surface:#24313e;--mx-media-control-bg:#e3ebf1ed;
+  --mx-media-control-border:#a7b5c5;--mx-media-control-ink:#344c60;--mx-media-grip:#5f819b;
+}
+:root[data-theme="midnight"] {
+  --mx-media-stroke:#496b8b;--mx-code-stroke:#557d9f;
+  --mx-code-surface:#101f31;--mx-media-control-bg:#20374dec;
+  --mx-media-control-border:#5b84a5;--mx-media-control-ink:#d4e9fa;--mx-media-grip:#89bce0;
+}
+:root[data-theme="sepia"] {
+  --mx-media-stroke:#b9a58c;--mx-code-stroke:#bea98d;
+  --mx-code-surface:#352e2b;--mx-media-control-bg:#e7dac7f2;
+  --mx-media-control-border:#bda78d;--mx-media-control-ink:#685541;--mx-media-grip:#ab8d6b;
+}
+:root[data-theme="nord"] {
+  --mx-media-stroke:#647e97;--mx-code-stroke:#718fa8;
+  --mx-code-surface:#283744;--mx-media-control-bg:#384957ee;
+  --mx-media-control-border:#7897ac;--mx-media-control-ink:#e6f0f8;--mx-media-grip:#97bfd3;
+}
+:root[data-theme="forest"] {
+  --mx-media-stroke:#567c66;--mx-code-stroke:#608c76;
+  --mx-code-surface:#192c25;--mx-media-control-bg:#294735f0;
+  --mx-media-control-border:#658f77;--mx-media-control-ink:#e2f4e8;--mx-media-grip:#9bceb0;
+}
+:root[data-theme="rose"] {
+  --mx-media-stroke:#805e78;--mx-code-stroke:#94708c;
+  --mx-code-surface:#2e2430;--mx-media-control-bg:#483649ee;
+  --mx-media-control-border:#947b92;--mx-media-control-ink:#f4e6f0;--mx-media-grip:#d2a2c1;
+}
+:root[data-theme="solarized"] {
+  --mx-media-stroke:#3f7078;--mx-code-stroke:#4c8289;
+  --mx-code-surface:#063440;--mx-media-control-bg:#174852ee;
+  --mx-media-control-border:#558c93;--mx-media-control-ink:#dfebeb;--mx-media-grip:#7db9b7;
+}
+
+/* Group images next to one another; wrap naturally on small phones. */
+.rich-editor [data-asset-gallery="1"]{
+  display:flex!important;flex-wrap:wrap!important;align-items:flex-start;
+  align-content:flex-start;justify-content:flex-start;
+  gap:12px!important;clear:both;max-width:100%;min-width:0;
+  margin:14px 0!important;padding:0!important;
+  overflow:visible!important;line-height:normal;
+}
+.rich-editor [data-asset-gallery="1"]>figure[data-kind="image"]{
+  position:relative;display:block!important;flex:0 0 auto!important;
+  float:none!important;clear:none!important;
+  margin:0!important;vertical-align:top;
+  max-width:100%!important;min-width:160px;
+}
+.rich-editor figure[data-asset-id][data-kind="image"],
+.rich-editor figure[data-asset-id][data-kind="image"]:hover,
+.rich-editor figure[data-asset-id][data-kind="image"].image-resizing {
+  border:1px solid var(--mx-media-stroke)!important;
+  border-radius:10px!important;
+  padding:3px!important;
+  background:transparent!important;
+  box-shadow:0 2px 12px #0000000c!important;
+  overflow:visible!important;
+}
+.rich-editor figure[data-kind="image"]>img{
+  border-radius:7px!important;max-width:100%;
+}
+.rich-editor figure[data-kind="image"]::after{
+  content:none!important;display:none!important;
+}
+/* Small, always-visible corner grip; useful for touch and mouse. */
+.rich-editor figure[data-kind="image"] [data-resize-handle]{
+  box-sizing:border-box;position:absolute!important;right:4px;bottom:4px;
+  display:grid!important;place-items:center;width:27px;height:27px;
+  z-index:7;border-radius:7px;
+  border:1px solid var(--mx-media-control-border);
+  background:var(--mx-media-control-bg);
+  color:var(--mx-media-grip);
+  cursor:nwse-resize;touch-action:none!important;
+  opacity:.92;transition:background .15s,opacity .15s;
+  pointer-events:auto!important;
+}
+.rich-editor figure[data-kind="image"] [data-resize-handle] svg{
+  display:block;width:17px;height:17px;pointer-events:none;
+}
+.rich-editor figure[data-kind="image"] [data-resize-handle]:hover,
+.rich-editor figure[data-kind="image"].image-resizing [data-resize-handle]{
+  opacity:1;filter:brightness(1.17);
+}
+.rich-editor figure[data-asset-id] [data-asset-controls]{
+  top:7px!important;right:7px!important;
+  display:flex!important;align-items:center;
+  padding:2px!important;border:1px solid var(--mx-media-control-border)!important;
+  background:var(--mx-media-control-bg)!important;
+  border-radius:9px!important;box-shadow:0 2px 9px #00000020!important;
+}
+.rich-editor figure[data-asset-id] [data-asset-controls] button{
+  display:grid;place-items:center;
+  width:27px;height:27px;line-height:1;
+  background:transparent!important;
+  color:var(--mx-media-control-ink)!important;
+  font-size:20px;font-weight:400;
+  border-radius:6px!important;opacity:1!important;
+}
+.rich-editor figure[data-asset-id] [data-asset-controls] button:hover{
+  color:#fff!important;background:#ae4d5ac9!important;
+}
+.rich-editor pre[data-code-block],
+.rich-editor pre[data-code-block]:hover,
+.rich-editor pre[data-code-block]:focus-within{
+  position:relative;
+  border:1px solid var(--mx-code-stroke)!important;
+  border-radius:11px!important;
+  background:var(--mx-code-surface)!important;
+  box-shadow:0 2px 12px #00000012!important;
+  padding:42px 15px 15px!important;
+  overflow-x:auto!important;
+}
+.rich-editor pre[data-code-block]:focus-within{
+  border-color:var(--mx-media-grip)!important;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--mx-code-stroke),transparent 45%)!important;
+}
+.rich-editor pre[data-code-block] [data-code-controls]{
+  box-sizing:border-box;position:absolute;top:8px!important;right:9px!important;
+  display:flex!important;align-items:center;gap:4px;
+  padding:3px!important;
+  border:1px solid var(--mx-media-control-border)!important;
+  border-radius:9px!important;
+  background:var(--mx-media-control-bg)!important;
+  box-shadow:0 2px 8px #00000019!important;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button{
+  display:inline-flex;justify-content:center;align-items:center;gap:5px;
+  min-width:29px;height:28px;padding:3px 6px;border:0;
+  border-radius:6px;background:transparent!important;
+  color:var(--mx-media-control-ink)!important;
+  font:500 12px/1 var(--sans);cursor:pointer;
+  transition:background .14s,color .14s;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button svg{
+  display:block;width:17px;height:17px;flex:none;pointer-events:none;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button[data-code-action="remove"]{
+  min-width:28px;padding:2px 5px;font:400 20px/1 var(--sans);
+}
+.rich-editor pre[data-code-block] [data-code-controls] button:hover{
+  background:color-mix(in srgb,var(--mx-media-control-border),transparent 50%)!important;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button[data-code-action="remove"]:hover{
+  background:#b95061ba!important;color:#fff!important;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button .copy-feedback{
+  display:none;color:var(--mx-media-control-ink);font:600 11px/1 var(--sans)
+}
+.rich-editor pre[data-code-block] [data-code-controls] button.is-copied{
+  min-width:82px;background:color-mix(in srgb,var(--mx-media-control-border),transparent 57%)!important;
+}
+.rich-editor pre[data-code-block] [data-code-controls] button.is-copied .copy-feedback{
+  display:inline;
+}
+.rich-editor [data-code-controls] button:focus-visible,
+.rich-editor [data-asset-controls] button:focus-visible,
+.rich-editor [data-resize-handle]:focus-visible{
+  outline:2px solid var(--mx-media-grip);outline-offset:2px
+}
+@media(max-width:1100px),(any-pointer:coarse) and (max-width:1500px){
+  .rich-editor [data-asset-gallery="1"]{gap:9px!important;margin:12px 0!important}
+  .rich-editor pre[data-code-block]{padding:41px 12px 13px!important}
+  .rich-editor figure[data-kind="image"] [data-resize-handle]{
+    width:29px;height:29px;opacity:1
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .rich-editor [data-resize-handle],
+  .rich-editor pre[data-code-block] [data-code-controls] button{transition:none!important}
+}
