@@ -9,7 +9,7 @@
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;450;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700&family=IBM+Plex+Mono:wght@400;450;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
   <title>MX Notes — A space to think</title>
 </head>
@@ -69,7 +69,7 @@
       <div class="sidebar-foot"><span class="status-led"></span><span id="sidebar-status">Saved on this device</span><button id="sidebar-cloud" aria-label="Cloud settings"><svg><use href="#i-cloud"/></svg></button></div>
     </aside>
     <main class="editor-pane" id="editor-pane">
-      <div class="tabbar desktop-tabbar"><div class="active-tab"><span class="tab-arrow">‹</span><span id="tab-title">A calmer mind</span><span class="tab-circle"></span></div><button class="new-tab" id="tab-new" title="New note">+</button></div>
+      <div class="tabbar desktop-tabbar"><div id="open-tabs" class="open-tabs" role="tablist" aria-label="Open notes"></div><button class="new-tab" id="tab-new" title="Open new note tab" aria-label="New tab"><svg><use href="#i-plus"/></svg></button></div>
       <div class="editor-toolbar">
         <button class="icon-button mobile-menu" id="open-sidebar" aria-label="Open notes"><svg><use href="#i-menu"/></svg></button>
         <button class="mobile-note-title" id="mobile-title">A calmer mind <svg><use href="#i-chevron"/></svg></button>
@@ -77,6 +77,7 @@
         <div class="toolbar-spacer"></div>
         <button class="sync-button" id="cloud-button" title="Cloud sync settings"><svg><use href="#i-cloud"/></svg><span id="sync-text">Saved locally</span><span class="toolbar-time" id="sync-time"></span></button>
         <button class="icon-button" id="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false"><svg><use href="#i-sun"/></svg></button>
+        <button class="icon-button" id="toggle-insights" aria-label="Toggle right sidebar" title="Show / hide graph sidebar"><svg><use href="#i-graph"/></svg></button>
         <button class="icon-button" id="focus-button" aria-label="Focus mode" title="Focus mode"><svg><use href="#i-maximize"/></svg></button>
         <button class="icon-button" id="more-button" aria-label="Note actions" title="Note actions"><svg><use href="#i-more"/></svg></button>
       </div>
@@ -85,54 +86,55 @@
           <div class="editor-eyebrow" id="editor-eyebrow">PERSONAL JOURNAL <span>—</span> <span id="date-display"></span></div>
           <input id="note-title" class="note-title-input" aria-label="Note title" placeholder="Untitled" spellcheck="false" />
           <div class="under-title"><span class="under-line"></span><span id="note-updated">Write something worth remembering.</span></div>
-          <textarea id="note-body" class="note-body" placeholder="Start writing..." spellcheck="true" aria-label="Note content"></textarea>
-          <div id="preview-body" class="markdown-preview hidden"></div>
-          <div class="note-tags" id="note-tags"></div>
+          <div id="rich-editor" class="rich-editor" contenteditable="true" role="textbox" aria-label="Note content" aria-multiline="true" data-placeholder="Start writing..." spellcheck="true"></div>
           <div class="editor-bottom-space"></div>
         </div>
       </div>
-      <div class="writing-controls" id="writing-controls">
-        <button class="format-btn" data-insert="## " title="Heading">H<span>2</span></button>
-        <button class="format-btn strong" data-wrap="**" title="Bold">B</button>
-        <button class="format-btn italic" data-wrap="*" title="Italic">I</button>
-        <button class="format-btn" data-insert="- " title="Bulleted list">≡</button>
-        <button class="format-btn" data-insert="[[Note title]]" title="Link another note"><svg><use href="#i-link"/></svg></button>
+      <div class="writing-controls" id="writing-controls" role="toolbar" aria-label="Text formatting">
+        <button id="style-picker" class="format-btn format-style" type="button" title="Text styles" aria-label="Text styles"><span class="style-symbol">Aa</span><svg><use href="#i-chevron"/></svg></button>
+        <span class="format-divider"></span>
+        <button class="format-btn strong" data-command="bold" title="Bold" aria-label="Bold"><strong>B</strong></button>
+        <button class="format-btn italic" data-command="italic" title="Italic" aria-label="Italic"><em>I</em></button>
+        <button class="format-btn" data-command="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+        <span class="format-divider"></span>
+        <button class="format-btn" data-command="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list"><svg><use href="#i-list"/></svg></button>
+        <button class="format-btn list-number" data-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1.</button>
+        <button class="format-btn" data-command="checklist" title="Checklist" aria-label="Checklist"><svg><use href="#i-check"/></svg></button>
         <div class="writing-spacer"></div>
-        <button class="text-action" id="preview-toggle" title="Toggle Markdown preview"><svg><use href="#i-eye"/></svg><span>Preview</span></button>
+        <button class="format-btn" data-command="createLink" title="Insert link" aria-label="Insert link"><svg><use href="#i-link"/></svg></button>
       </div>
-      <footer class="editor-footer"><span id="word-count">0 words</span><span class="footer-separator">•</span><span id="character-count">0 characters</span><span class="footer-spacer"></span><span id="format-label">Markdown</span><span class="footer-separator">•</span><span class="footer-aa">Aa</span><span class="footer-keyboard">⌘</span></footer>
+      <footer class="editor-footer"><span id="word-count">0 words</span><span class="footer-separator">•</span><span id="character-count">0 characters</span><span class="footer-spacer"></span><span id="format-label">Rich text · Autosaved</span><span class="footer-separator">•</span><span class="footer-aa">Aa</span></footer>
     </main>
     <aside class="insights" id="insights" aria-label="Connected notes">
       <div class="insights-tabs">
         <button class="insights-tab active" data-panel="graph" title="Graph view"><svg><use href="#i-graph"/></svg></button>
         <button class="insights-tab" data-panel="backlinks" title="Backlinks"><svg><use href="#i-list"/></svg></button>
         <button class="insights-tab" data-panel="calendar" title="Note details"><svg><use href="#i-calendar"/></svg></button>
-        <button class="insights-close" id="close-insights" title="Close panel"><svg><use href="#i-x"/></svg></button>
+        <button class="insights-close" id="close-insights" title="Hide panel"><svg><use href="#i-x"/></svg></button>
       </div>
       <div id="insights-content" class="insights-scroll"></div>
+      <button class="insights-hide-button" id="hide-insights" type="button">‹ &nbsp; Hide sidebar</button>
     </aside>
     <nav class="mobile-nav" aria-label="Mobile navigation">
-      <button class="mobile-nav-btn active" data-mobile="notes"><svg><use href="#i-file"/></svg><span>Notes</span></button>
-      <button class="mobile-nav-btn" data-mobile="graph"><svg><use href="#i-graph"/></svg><span>Graph</span></button>
-      <button class="mobile-nav-btn" data-mobile="backlinks"><svg><use href="#i-link"/></svg><span>Backlinks</span></button>
-      <button class="mobile-nav-btn" data-mobile="search"><svg><use href="#i-search"/></svg><span>Search</span></button>
-      <div class="mobile-nav-tail"><button id="mobile-new" class="mobile-new"><svg><use href="#i-plus"/></svg> New note</button></div>
+      <button class="mobile-nav-btn active" data-mobile="notes" aria-label="Notes"><svg><use href="#i-file"/></svg><span>Notes</span></button>
+      <button class="mobile-nav-btn" data-mobile="graph" aria-label="Graph view"><svg><use href="#i-graph"/></svg><span>Graph</span></button>
+      <button class="mobile-nav-btn" data-mobile="backlinks" aria-label="Backlinks"><svg><use href="#i-link"/></svg><span>Links</span></button>
+      <button class="mobile-nav-btn" data-mobile="search" aria-label="Search"><svg><use href="#i-search"/></svg><span>Search</span></button>
+      <button id="mobile-new" class="mobile-nav-btn mobile-create" aria-label="New note"><svg><use href="#i-plus"/></svg><span>New</span></button>
     </nav>
   </div>
   <div class="overlay" id="overlay" hidden></div>
-  <div class="menu-popover" id="note-menu" hidden>
-    <button data-action="star"><svg><use href="#i-star"/></svg><span id="star-menu-label">Add to starred</span></button>
-    <button data-action="move"><svg><use href="#i-folder"/></svg>Move to folder</button>
-    <button data-action="archive"><svg><use href="#i-archive"/></svg><span id="archive-menu-label">Archive note</span></button>
-    <button data-action="export"><svg><use href="#i-download"/></svg>Export Markdown</button>
-    <button data-action="focus"><svg><use href="#i-maximize"/></svg>Focus mode</button>
-    <button data-action="theme"><svg><use href="#i-sun"/></svg><span id="menu-theme-label">Light theme</span></button>
-    <button data-action="sync"><svg><use href="#i-refresh"/></svg>Sync now</button>
-    <button class="danger-action" data-action="delete"><svg><use href="#i-trash"/></svg>Move to trash</button>
+  <div class="menu-popover" id="context-menu" role="menu" hidden></div>
+  <div class="menu-popover style-popover" id="style-menu" hidden>
+    <button data-style="p" role="menuitem">Body text</button>
+    <button data-style="h1" role="menuitem">Title</button>
+    <button data-style="h2" role="menuitem">Heading</button>
+    <button data-style="h3" role="menuitem">Subheading</button>
+    <button data-style="blockquote" role="menuitem">Quote</button>
   </div>
   <dialog class="modal" id="settings-modal" aria-labelledby="settings-title">
     <div class="modal-head"><div><span class="modal-kicker">MX NOTES</span><h2 id="settings-title">Your private writing space</h2></div><button class="icon-button" id="settings-close" aria-label="Close"><svg><use href="#i-x"/></svg></button></div>
-    <p class="modal-description">Your private workspace saves to this device instantly. Cloud sync is optional and requires your own Supabase account. There is no public sign-up on this site.</p>
+    <p class="modal-description">Notes save instantly on this device, and sync automatically to your private Cloudflare D1 database when connected.</p>
     <div class="cloud-state" id="cloud-state">Local-only mode</div>
     <section class="sync-verification" aria-label="Cloud sync verification">
       <div class="verify-header"><svg><use href="#i-shield"/></svg><span>SYNC VERIFICATION</span></div>
@@ -146,12 +148,12 @@
       <div><span class="settings-section-label">APPEARANCE</span><p>Writing theme</p><span id="theme-mode">Dark mode</span></div>
       <button class="appearance-button" id="settings-theme-toggle" type="button"><svg><use href="#i-sun"/></svg> Switch to light</button>
     </section>
-    <div class="form-grid" id="cloud-login-fields"><label>Supabase project URL<input id="supabase-url" type="url" placeholder="https://your-project.supabase.co" autocomplete="off"/></label><label>Publishable / anon key<input id="supabase-key" type="text" placeholder="sb_publishable_... or eyJ..." autocomplete="off"/></label><label>Email<input id="auth-email" type="email" placeholder="you@example.com" autocomplete="username"/></label><label>Password<input id="auth-password" type="password" placeholder="Your Supabase account password" autocomplete="current-password"/></label></div>
-    <div class="modal-actions"><button class="primary" id="sign-in">Sign in & sync</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
+    <div class="form-grid" id="cloud-login-fields"><label>Your private Cloudflare password<input id="owner-password" type="password" placeholder="Owner password" autocomplete="current-password"/></label></div>
+    <div class="modal-actions"><button class="primary" id="sign-in">Unlock cloud vault</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
     <p class="form-feedback" id="auth-feedback" role="status"></p>
     <hr class="modal-rule"/>
     <h3>Backups & workspace</h3><div class="modal-actions"><button class="secondary" id="export-all"><svg><use href="#i-download"/></svg> Export backup</button><button class="secondary" id="import-all"><svg><use href="#i-upload"/></svg> Import backup</button><input id="import-file" type="file" accept="application/json,.json" hidden /></div>
-    <p class="fine-print">One owner only: create your user inside Supabase Authentication → Users, disable new-user sign-ups in Supabase, then sign in here. Cloud sync requires <code>supabase.sql</code> and secure row-level access rules. Never use a service-role or secret key here.</p>
+    <p class="fine-print">Private cloud: create a Cloudflare D1 database, bind it as <code>DB</code>, run <code>cloudflare/schema.sql</code>, and set two encrypted Pages secrets: <code>NOTES_PASSWORD</code> and <code>SESSION_SECRET</code>. There is no signup or third-party account in the app. Cloud sync begins after this setup.</p>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="./app.js" defer></script>
