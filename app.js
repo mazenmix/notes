@@ -207,7 +207,7 @@
     });
     s=s.replace(/(\*\*|__)(.+?)\1/g,'<strong>$2</strong>');
     s=s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g,'<em>$1</em>');
-    s=s.replace(/&#96;([^&#]+)&#96;/g,'<code>$1</code>');
+    s=s.replace(/\x60([^\x60]+)\x60/g,'<code>$1</code>');
     return s;
   }
   function renderPreview() {
@@ -306,6 +306,7 @@
   function actOnNote(action){
     const n=current();if(!n)return;
     $('note-menu').hidden=true;
+    if(action==='focus'){toggleFocus();return;}
     if(action==='star'){mutateNote('starred',!n.starred);toast(n.starred?'Note starred':'Star removed');}
     if(action==='move'){
       const options=['Inbox',...state.folders];
@@ -349,9 +350,9 @@
     if(!cloudConfig?.url||!cloudConfig?.key)throw Error('Enter Supabase project URL and publishable key');
     const headers=Object.assign({
       apikey:cloudConfig.key,
-      Authorization:'Bearer '+(useSession&&session?.access_token?session.access_token:cloudConfig.key),
       'Content-Type':'application/json'
     },options.headers||{});
+    if(useSession&&session?.access_token)headers.Authorization='Bearer '+session.access_token;
     const response=await fetch(cloudConfig.url+path,{...options,headers});
     let data;
     try{data=await response.json();}catch(e){data=null;}
@@ -495,7 +496,7 @@
     $('note-body').addEventListener('blur',()=>document.body.classList.remove('editing'));
     $('note-tags').addEventListener('click',e=>{
       const b=e.target.closest('[data-tag]');
-      if(b){search='#'+b.dataset.tag;$('search').value=search;openSidebar(true);return;}
+      if(b){search=b.dataset.tag;$('search').value=search;openSidebar(true);return;}
       if(e.target.closest('#add-tag')){
         const n=current(),next=prompt('Add a tag (without #)');if(!n||next===null)return;
         const tag=next.trim().replace(/^#/,'').slice(0,40);
