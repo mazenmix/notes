@@ -1,0 +1,18 @@
+{
+  "name": "MX Notes — A space to think",
+  "short_name": "MX Notes",
+  "description": "Calm, connected notes. Write with clarity.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101214",
+  "theme_color": "#101214",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
