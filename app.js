@@ -774,6 +774,32 @@
 
   // Real private R2 attachments. Blob URLs never persist to D1 HTML.
   const assetUrlCache=new Map(),assetInflight=new Map(),resizedFigures=new WeakSet();
+  const ASSET_CLEANUP='mxnotes.assets.awaitingSafeDelete';
+  let flushingAssets=false;
+  function queueAssetCleanup(notes){
+    let ids=[];try{ids=JSON.parse(localStorage.getItem(ASSET_CLEANUP)||'[]');}catch(e){}
+    const queued=new Set(Array.isArray(ids)?ids:[]);
+    for(const note of notes)for(const m of String(note.html||'').matchAll(/data-asset-id="([a-f0-9-]{36})"/gi))queued.add(m[1]);
+    try{localStorage.setItem(ASSET_CLEANUP,JSON.stringify([...queued]));}catch(e){}
+  }
+  async function flushAssetCleanup(){
+    if(flushingAssets||!ownerActive)return;
+    flushingAssets=true;
+    try{
+      let ids=[];try{ids=JSON.parse(localStorage.getItem(ASSET_CLEANUP)||'[]');}catch(e){}
+      if(!Array.isArray(ids)||!ids.length)return;
+      const still=[];
+      for(const id of ids.slice(0,100)){
+        try{
+          const response=await fetch('/api/attachment?id='+encodeURIComponent(id),{
+            method:'DELETE',credentials:'same-origin'
+          });
+          if(!response.ok&&![404,409].includes(response.status))still.push(id);
+        }catch(e){still.push(id);}
+      }
+      localStorage.setItem(ASSET_CLEANUP,JSON.stringify([...still,...ids.slice(100)]));
+    }finally{flushingAssets=false;}
+  }
   async function assetUrl(id){
     if(assetUrlCache.has(id))return assetUrlCache.get(id);
     if(assetInflight.has(id))return assetInflight.get(id);
@@ -1393,9 +1419,11 @@
         const ok=await confirmAction('Empty Trash?','Permanently delete '+pending.length+' notes and '+trashedFolders.length+' folders? This cannot be undone.');
         if(!ok)break;
         const now=stamp();
+        queueAssetCleanup(pending);
         pending.forEach(item=>{item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.starred=false;item.archived=false;item.updatedAt=now;});
         const allPurgedFolders=new Set(trashedFolders);
         for(const folder of state.folders)if(trashedFolders.some(root=>folderDescends(folder,root)))allPurgedFolders.add(folder);
+        queueAssetCleanup([...pending,...state.notes.filter(item=>allPurgedFolders.has(item.folder)&&!item.purged)]);
         for(const folder of allPurgedFolders){
           state.folderTrash[folder]={deleted:true,purged:true,updatedAt:now};
           state.notes.filter(item=>item.folder===folder&&!item.purged).forEach(item=>{
@@ -1643,6 +1671,8 @@
           lastConfirmed={owner:true,at:stamp(),revision};
           localStorage.setItem(VERIFIED,JSON.stringify(lastConfirmed));
           makeSavedStatus(dirty?'Saving…':'Saved to cloud');ok=true;
+          // Object removal happens only after the new D1 vault is verified.
+          void flushAssetCleanup();
           if(!isEditing)renderAll();break;
         }catch(e){if(e.status!==409||attempt===2)throw e;}
       }
