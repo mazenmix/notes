@@ -338,24 +338,42 @@
     {divider:true},
     {ico:'trash',label:'Delete folder',action:'folder-delete',danger:true}
   ];
-  const panelOptions=()=>[
-    {ico:'graph',label:'Graph view',action:'panel-graph'},
-    {ico:'link',label:'Backlinks',action:'panel-backlinks'},
-    {ico:'calendar',label:'Note details',action:'panel-calendar'},
-    {divider:true},
-    {ico:'minimize',label:'Hide right sidebar',action:'panel-hide'}
-  ];
   const appOptions=()=>[
-    {ico:'star',label:'Favorite note',action:'star-note'},
-    {ico:'folder',label:'Move note',action:'move-note'},
-    {ico:'edit',label:'Rename note',action:'rename-note'},
-    {ico:'file',label:'Duplicate note',action:'duplicate-note'},
-    {ico:'download',label:'Export HTML',action:'export-note'},
+    {ico:'plus',label:'New note',action:'new-note'},
+    {ico:'folder',label:'New folder',action:'new-folder'},
     {divider:true},
-    {ico:'graph',label:panelHidden?'Show right sidebar':'Hide right sidebar',action:panelHidden?'panel-graph':'panel-hide'},
-    {ico:'maximize',label:'Focus mode',action:'focus'},
+    {ico:'star',label:'Favorite current note',action:'star-note'},
+    {ico:'file',label:'Duplicate note',action:'duplicate-note'},
+    {ico:'download',label:'Export note',action:'export-note'},
+    {divider:true},
+    {ico:'palette',label:'Appearance & settings',action:'settings'},
     {ico:'refresh',label:'Sync now',action:'sync'},
-    {ico:'trash',label:'Move to trash',action:'delete-note',danger:true}
+    {ico:'trash',label:'Move note to trash',action:'delete-note',danger:true}
+  ];
+  const tabBlankOptions=()=>[
+    {ico:'plus',label:'New note in tab',action:'new-note'},
+    ...(lastClosedTab&&findNote(lastClosedTab)?[{ico:'refresh',label:'Reopen closed tab',action:'restore-tab'}]:[]),
+    {ico:'file',label:'Close active tab',action:'close-tab'},
+    {ico:'x',label:'Close other tabs',action:'close-other-tabs'},
+    {divider:true},
+    {ico:'folder',label:'New folder',action:'new-folder'},
+    {ico:'palette',label:'Appearance & settings',action:'settings'}
+  ];
+  const editorOptions=hasText=>[
+    ...(hasText?[{ico:'file',label:'Copy',action:'edit-copy'},{ico:'edit',label:'Cut',action:'edit-cut'}]:[]),
+    {ico:'file',label:'Paste',action:'edit-paste'},
+    {ico:'list',label:'Select all',action:'edit-select-all'},
+    {divider:true},
+    ...(hasText?[
+      {ico:'edit',label:'Replace selection…',action:'edit-replace'},
+      {ico:'file',label:'Bold selection',action:'edit-bold'},
+      {ico:'file',label:'Italic selection',action:'edit-italic'},
+      {divider:true},
+      {ico:'arrow',label:'Translate to Arabic ↗',action:'translate-ar'},
+      {ico:'arrow',label:'Translate to English ↗',action:'translate-en'}
+    ]:[]),
+    {ico:'check',label:'Spelling & suggestions',action:'spellcheck-help'},
+    {ico:'search',label:'Find in this note',action:'find-note'}
   ];
   function selectFolder(folder){filter='folder:'+folder;search='';$('search').value='';renderSidebar();closePanels();}
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
@@ -376,6 +394,12 @@
     hideContext();
     switch(action){
       case 'open-note':if(n)openNote(n.id);break;
+      case 'new-note':newNote();break;
+      case 'new-folder':$('new-folder').click();break;
+      case 'settings':settingsOpen();break;
+      case 'close-tab':if(selected)closeTab(selected);break;
+      case 'close-other-tabs':if(selected){tabs=[selected];saveUi();noteTabs();}break;
+      case 'restore-tab':if(lastClosedTab&&findNote(lastClosedTab)){openNote(lastClosedTab);lastClosedTab=null;saveUi();}break;
       case 'rename-note':if(n){openNote(n.id);$('note-title').focus();$('note-title').select();}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
@@ -400,12 +424,63 @@
         if(name!==null)folderRename(folder,name.trim());
       }break;
       case 'folder-delete':if(await confirmAction('Delete folder?','Notes in this folder will move to Inbox.'))removeFolder(folder);break;
-      case 'panel-graph':showPanel('graph');break;
-      case 'panel-backlinks':showPanel('backlinks');break;
-      case 'panel-calendar':showPanel('calendar');break;
-      case 'panel-hide':hidePanel();break;
       case 'focus':toggleFocus();break;
+      case 'edit-copy':case 'edit-cut':case 'edit-paste':case 'edit-replace':case 'edit-select-all':case 'edit-bold':case 'edit-italic':case 'translate-ar':case 'translate-en':case 'spellcheck-help':case 'find-note':await runEditAction(action,context);break;
       case 'sync':await syncNow();break;
+    }
+  }
+  async function runEditAction(action,ctx={}){
+    const input=ctx.input?$('note-title'):$('rich-editor');
+    const restore=()=>{input.focus({preventScroll:true});if(!ctx.input)restoreSelection();else if(Number.isInteger(ctx.start))input.setSelectionRange(ctx.start,ctx.end);};
+    const text=ctx.selectionText||'';
+    if(action==='spellcheck-help'){
+      input.spellcheck=true;
+      showToast('Spelling underlines are on. Use Shift + right-click for browser suggestions.');
+      return;
+    }
+    if(action==='find-note'){
+      const needle=await ask('Find in note','Text to find',text);if(!needle)return;
+      const found=(ctx.input?input.value:input.innerText).toLocaleLowerCase().includes(needle.toLocaleLowerCase());
+      showToast(found?'Found in this note':'No matching text');return;
+    }
+    if(action.startsWith('translate-')){
+      if(!text){showToast('Select text to translate first');return;}
+      const lang=action==='translate-ar'?'ar':'en';
+      window.open('https://translate.google.com/?sl=auto&tl='+lang+'&text='+encodeURIComponent(text),'_blank','noopener,noreferrer');
+      return;
+    }
+    if(action==='edit-copy'||action==='edit-cut'){
+      if(!text){showToast('Select some text first');return;}
+      try{await navigator.clipboard.writeText(text);}catch(e){showToast('Copy permission unavailable');return;}
+      if(action==='edit-cut'){
+        restore();if(ctx.input){input.setRangeText('',ctx.start,ctx.end,'start');onTitleInput();}
+        else{document.execCommand('delete');onEditorInput();}
+      }else showToast('Copied');
+      return;
+    }
+    if(action==='edit-select-all'){
+      restore();if(ctx.input)input.select();else{
+        const range=document.createRange();range.selectNodeContents(input);
+        const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);saveSelection();
+      }return;
+    }
+    if(action==='edit-paste'){
+      try{
+        const value=await navigator.clipboard.readText();restore();
+        if(ctx.input){input.setRangeText(value,ctx.start,ctx.end,'end');onTitleInput();}
+        else{document.execCommand('insertText',false,value);onEditorInput();}
+      }catch(e){showToast('Allow clipboard access, or use Ctrl+V');}return;
+    }
+    if(action==='edit-replace'){
+      if(!text){showToast('Select text first');return;}
+      const value=await ask('Replace selection','Replacement text',text);if(value===null)return;
+      restore();if(ctx.input){input.setRangeText(value,ctx.start,ctx.end,'end');onTitleInput();}
+      else{document.execCommand('insertText',false,value);onEditorInput();}
+      return;
+    }
+    if(['edit-bold','edit-italic'].includes(action)){
+      if(ctx.input){showToast('Formatting is available inside the note body');return;}
+      restore();format(action==='edit-bold'?'bold':'italic');
     }
   }
   function exportFile(name,content,type){
