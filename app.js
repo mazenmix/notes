@@ -143,6 +143,7 @@
     $('writing-font').value=writingFont;
     document.documentElement.style.setProperty('--editor-font-size',writingSize+'px');
     $('font-size-label').textContent=writingSize;
+    $('auto-correct').checked=autoCorrect;
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=theme==='light'?'#f8fafb':'#101214';
   }
@@ -470,6 +471,33 @@
 
   // Fast, private offline spelling hints. Built-in browser spellcheck remains
   // available with Shift + right-click for its full installed dictionaries.
+  // This list is deliberately conservative. Only explicit, unambiguous typos
+  // are automatically replaced on Space; other candidates remain suggestions.
+  const autoFixPairs={
+    teh:'the',adn:'and',thier:'their',recieve:'receive',recieved:'received',
+    acheive:'achieve',beleive:'believe',becuase:'because',becouse:'because',
+    definetly:'definitely',definately:'definitely',seperate:'separate',
+    adress:'address',addres:'address',enviroment:'environment',
+    goverment:'government',occurence:'occurrence',occured:'occurred',
+    succesful:'successful',sucess:'success',freind:'friend',
+    freinds:'friends',wierd:'weird',untill:'until',wich:'which',
+    langauge:'language',mesage:'message',messege:'message',
+    tommorow:'tomorrow',tommorrow:'tomorrow',immediatly:'immediately',
+    begining:'beginning',writting:'writing',comming:'coming',
+    beleif:'belief',seperately:'separately',grammer:'grammar',
+    neccessary:'necessary',necesary:'necessary',expierence:'experience',
+    calender:'calendar',resturant:'restaurant',privat:'private',
+    notees:'notes',sycn:'sync',cluod:'cloud',becasue:'because',
+    woud:'would',shoud:'should',coud:'could',qick:'quick',
+    هاذا:'هذا',هاذه:'هذه',لاكن:'لكن',الكن:'لكن',
+    اللغه:'اللغة',مدرسه:'مدرسة',تجربه:'تجربة',
+    كتابه:'كتابة',ملاحظه:'ملاحظة',ملاخظة:'ملاحظة',
+    الملاحضات:'الملاحظات',الملاحضه:'الملاحظة',
+    حتي:'حتى',اليومم:'اليوم',سوال:'سؤال',
+    شيئ:'شيء',بالتاكيد:'بالتأكيد',
+    الضاهر:'الظاهر',الظابط:'الضابط',الغه:'اللغة',
+    الاخطااء:'الأخطاء',الكلماات:'الكلمات'
+  };
   const correctionPairs={
     teh:'the',adn:'and',thier:'their',recieve:'receive',recieved:'received',
     acheive:'achieve',beleive:'believe',becuase:'because',becouse:'because',
@@ -500,6 +528,9 @@
     لوحه:'لوحة',الكلمه:'الكلمة',الكلماات:'الكلمات',
     ايميل:'إيميل',الانكليزيه:'الإنكليزية'
   };
+  // Extra frequent-word vocabulary for offline right-click candidates.
+  const extraWords=('
+    address addresses addressing accepted access accurate accuracy action active actual add added adding admin advice affect again against airplane album align all already always amazing analysis android anniversary another answer answered answers apartment apparent appearance apple approach apps april arabic archive archived article artificial assistant atmosphere auto automatic automatically available aware background backup basic beautiful beauty become beginning believe beyond browser business button calendar cancel category celebration center century certain change changed changes changing chart check checking checklist checked child children choice choose cloud code collection comfortable communication compare complete completed computer connection connections connect connected continue continued conversation correct corrected correction correctly country create created creating creative creativity customer customers dashboard database data date daughter decision decorative delay delete deleted deleting design designer desktop determine development device dictionary difference different digital direct directly disable discover discovery display displays document documents download downloaded drag dynamic easily education effective efficiently electric electronic electricity elegant email emails enable enabled encouragement english enormous enough enter entered environment especially essential example exactly excellent exception excitement exercise experience explain explanation extension favorite favorites feature features February financial finally finished flight focus folder folders follow following font fonts formatting forward frequent frequently friends future geography github global government grammar great group groups guidance hamburger helpful history holiday home hours hover human idea ideas identity illustration image images improve improved improvements information input insert inside instagram installation installed integration interaction internet intuitive invitation issue javascript journey language languages latest layout leading learning leave leaving left letter lightweight limits link linked links listen location login long look looking lovely lunch manual march media medical medium memory menu menus message messages microsoft miles millions minute minutes mobile model month months morning moving music native navigation network news night note notes notice november number numbers obvious office offline official online open opened option options ordered organization organise organize original output outside paragraph paragraphs partner password passwords performance personal phone phrase picture pictures pinned platform please plugin polish possible practical prefer preference preferences prepare present previous privacy private product project publish punctuation quick quiet reach reading ready receive recent recommend recommendation reconnect reconnecting recover recovery redirect reduced reference refresh regular relevant reliable remember reminder remove removed repeat replace replaced report request requested reserve response responsive result restore restored retry review right risk romance romantic routine save saved saving schedule search secure security select selected selection sentences september session settings sharing shopping should side sidebar signup similar simple simplify skill small smooth solution solve source space special spelling standard start started state status stay sticky storage store strong structure style successful suggestions summary support supported sure syntax system table tab tabs tag tagalog task technical technology test tested testing text textarea theme themes third thought thoughtful thread time title today tomorrow tonight tool tools translate translated translation travel travel time trash tricky trust tutorial type typing uncle under underline undone undo unique unlock updated upload user users useful utility vacation value verify version video view visitor visible voice warm weather web website welcome window windows word words work working workspace would writing written wrong year yesterday').split(/\s+/u);
   const commonWords=new Set((
     'the and that this these those what when where which while whether with within without '+
     'note notes writing written writer word words writing correction spell spelling suggestions '+
@@ -521,6 +552,7 @@
     'الكمبيوتر الحاسوب العربية العراق بغداد الحياة العمل البيت الصديق الوقت '+
     'رسالة الرسالة النص الكلمات كتاب العربية هاي هسه بعد ويا عليها عليها تمام'
   ).split(/\s+/u).filter(Boolean).map(w=>w.toLocaleLowerCase()));
+  for(const w of extraWords)commonWords.add(w.toLocaleLowerCase());
   function wordDistance(a,b){
     const row=Array.from({length:b.length+1},(_,i)=>i);
     for(let i=1;i<=a.length;i++){
@@ -538,6 +570,7 @@
     const lower=word.toLocaleLowerCase(),direct=correctionPairs[lower];
     const upperFirst=w=>word[0]===word[0].toUpperCase()&&word[0]!==word[0].toLowerCase()?w[0].toUpperCase()+w.slice(1):w;
     if(direct)return [upperFirst(direct)];
+    if(autoFixPairs[lower])return [upperFirst(autoFixPairs[lower])];
     if(commonWords.has(lower))return [];
     const max=lower.length>8?2:1;
     const scored=[];
@@ -547,6 +580,40 @@
       if(distance>0&&distance<=max)scored.push({candidate,distance});
     }
     return scored.sort((a,b)=>a.distance-b.distance||a.candidate.length-b.candidate.length).slice(0,3).map(x=>upperFirst(x.candidate));
+  }
+
+  function autoCorrectOnSpace(e,editor){
+    if(!autoCorrect||e.inputType!=='insertText'||e.data!==' '||e.isComposing)return;
+    const selection=window.getSelection();
+    if(!selection?.rangeCount||!selection.isCollapsed||!editor.contains(selection.anchorNode))return;
+    const node=selection.anchorNode,offset=selection.anchorOffset;
+    if(node?.nodeType!==3)return;
+    const left=node.nodeValue.slice(0,offset);
+    const match=/([\p{L}][\p{L}\p{M}’'-]{2,})$/u.exec(left);
+    if(!match)return;
+    const word=match[1],lower=word.toLocaleLowerCase();
+    if(word===word.toLocaleUpperCase()||word.includes('@'))return;
+    const correction=autoFixPairs[lower];
+    if(!correction||correction.toLocaleLowerCase()===lower)return;
+    let result=correction;
+    if(word[0]===word[0].toUpperCase()&&word[0]!==word[0].toLowerCase())
+      result=correction[0].toLocaleUpperCase()+correction.slice(1);
+    e.preventDefault();
+    const range=document.createRange();
+    range.setStart(node,offset-word.length);
+    range.setEnd(node,offset);
+    selection.removeAllRanges();selection.addRange(range);
+    // execCommand preserves native undo history in Chromium and Safari.
+    const done=document.execCommand('insertText',false,result+' ');
+    if(!done){
+      range.deleteContents();
+      const inserted=document.createTextNode(result+' ');
+      range.insertNode(inserted);
+      range.setStartAfter(inserted);range.collapse(true);
+      selection.removeAllRanges();selection.addRange(range);
+    }
+    onEditorInput();
+    showToast(word+' → '+result+' · Ctrl+Z to undo');
   }
   function findPointWord(event,editor){
     const selected=window.getSelection();
@@ -1025,6 +1092,7 @@
   }
   function bindRichText(){
     const editor=$('rich-editor');
+    editor.addEventListener('beforeinput',e=>autoCorrectOnSpace(e,editor));
     editor.addEventListener('input',onEditorInput);
     editor.addEventListener('focus',()=>{isEditing=true;document.body.classList.add('editing');});
     editor.addEventListener('blur',()=>{isEditing=false;document.body.classList.remove('editing');commitEditor();});
@@ -1118,6 +1186,7 @@
     $('writing-font').addEventListener('change',e=>{writingFont=fontChoices.includes(e.target.value)?e.target.value:'system';localStorage.setItem(FONT,writingFont);applyTheme();showToast('Font updated');});
     $('font-size-down').addEventListener('click',()=>changeFontSize(-1));
     $('font-size-up').addEventListener('click',()=>changeFontSize(1));
+    $('auto-correct').addEventListener('change',e=>{autoCorrect=e.target.checked;localStorage.setItem(AUTOCORRECT,autoCorrect?'on':'off');showToast(autoCorrect?'Auto-correct on':'Auto-correct off');});
     $('cloud-button').addEventListener('click',settingsOpen);
     $('sidebar-cloud').addEventListener('click',settingsOpen);
     $('settings-close').addEventListener('click',()=>$('settings-modal').close());
