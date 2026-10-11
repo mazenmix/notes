@@ -1958,10 +1958,14 @@
     const pressStart=e=>{
       if(e.pointerType==='mouse')return;
       const target=e.target.closest('[data-folder],[data-note-id],[data-tab],[data-filter="trash"],#trash-link');
-      if(!target)return;
+      const tableCell=e.target.closest('#rich-editor td,#rich-editor th');
+      const codeBlock=e.target.closest('#rich-editor pre[data-code-block]');
+      if(!target&&!tableCell&&!codeBlock)return;
       clearTimeout(longTimer);
       longTimer=setTimeout(()=>{
-        if(target.dataset.filter==='trash'||target.id==='trash-link')showMenu(e.clientX,e.clientY,trashOptions(),{});
+        if(tableCell)showMenu(e.clientX,e.clientY,tableOptions(),{cell:tableCell});
+        else if(codeBlock)showMenu(e.clientX,e.clientY,codeOptions(),{codeBlock});
+        else if(target.dataset.filter==='trash'||target.id==='trash-link')showMenu(e.clientX,e.clientY,trashOptions(),{});
         else if(target.dataset.folder)showMenu(e.clientX,e.clientY,folderOptions(target.dataset.folder),{folder:target.dataset.folder});
         else if(target.dataset.noteId||target.dataset.tab){
           const id=target.dataset.noteId||target.dataset.tab,n=findNote(id);
