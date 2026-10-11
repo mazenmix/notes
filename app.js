@@ -6,7 +6,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const uuid=()=>crypto?.randomUUID?.()||'note-'+Date.now()+'-'+Math.random().toString(36).slice(2);
   const stamp=()=>new Date().toISOString();
-  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',VERIFIED='mxnotes.d1.lastVerified';
+  const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
     version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
@@ -89,7 +89,10 @@
   let selected=state.notes.some(n=>n.id===ui.selected)?ui.selected:(state.notes.find(n=>!n.deleted&&!n.archived)||state.notes[0])?.id||null;
   if(selected&&!tabs.includes(selected))tabs.push(selected);
   let filter='all',search='',theme=localStorage.getItem(THEME)==='light'?'light':'dark';
-  let panelHidden=!!ui.panelHidden,focusMode=false,insightTab='graph',isEditing=false,cloudReady=false,ownerActive=false;
+  let focusMode=false,isEditing=false,cloudReady=false,ownerActive=false;
+  let notesCollapsed=!!ui.notesCollapsed,collapsedGroups=new Set(Array.isArray(ui.collapsedGroups)?ui.collapsedGroups:[]),expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
+  let lastClosedTab=typeof ui.lastClosedTab==='string'?ui.lastClosedTab:null;
+  let writingFont=['system','obsidian','reading'].includes(localStorage.getItem(FONT))?localStorage.getItem(FONT):'system';
   let cloudStatus='Saved on this device',syncTimer=null,maxSyncTimer=null,syncing=false,requestedSync=false,dirty=false,revision=0,lastConfirmed=null;
   try{lastConfirmed=JSON.parse(localStorage.getItem(VERIFIED)||'null');}catch(e){}
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
@@ -104,7 +107,7 @@
   const plain=html=>{const d=document.createElement('div');d.innerHTML=safeHtml(html);return d.innerText||d.textContent||'';};
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
-  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,panelHidden}));}
+  function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],lastClosedTab}));}
   function persist(remote=true){
     pristine=false;
     state.updatedAt=stamp();
@@ -122,6 +125,8 @@
     $('theme-toggle').innerHTML=icon(theme==='light'?'moon':'sun');
     $('settings-theme-toggle').innerHTML=icon(theme==='light'?'moon':'sun')+(theme==='light'?' Switch to dark':' Switch to light');
     $('theme-mode').textContent=theme==='light'?'Light mode':'Dark mode';
+    document.documentElement.dataset.writingFont=writingFont;
+    $('writing-font').value=writingFont;
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=theme==='light'?'#f8fafb':'#101214';
   }
@@ -143,7 +148,7 @@
   }
   function closeTab(id){
     const i=tabs.indexOf(id);if(i<0)return;
-    tabs.splice(i,1);
+    lastClosedTab=id;tabs.splice(i,1);
     if(selected===id)selected=tabs[Math.min(i,tabs.length-1)]||visible()[0]?.id||null;
     if(selected&&!tabs.includes(selected))tabs.push(selected);
     saveUi();renderAll();
@@ -154,37 +159,25 @@
     state.notes.push(n);selected=n.id;tabs.push(n.id);filter='all';search='';$('search').value='';
     persist();saveUi();renderAll();closePanels();$('note-title').focus();$('note-title').select();
   }
-  function touchNote(n){n.updatedAt=stamp();persist();renderSidebar();noteTabs();updateSummary();renderInsights();}
+  function touchNote(n){n.updatedAt=stamp();persist();renderSidebar();noteTabs();updateSummary();}
   function closePanels(){
-    $('sidebar').classList.remove('open');$('insights').classList.remove('open');$('overlay').hidden=true;
+    $('sidebar').classList.remove('open');$('overlay').hidden=true;
     hideContext();$('style-menu').hidden=true;
   }
   function openSidebar(searchFocus=false){
-    if(innerWidth<761){$('sidebar').classList.add('open');$('insights').classList.remove('open');$('overlay').hidden=false;}
+    if(innerWidth<761){$('sidebar').classList.add('open');$('overlay').hidden=false;}
     if(searchFocus)setTimeout(()=>$('search').focus(),60);
   }
-  function showPanel(tab='graph'){
-    insightTab=tab;panelHidden=false;saveUi();
-    document.body.classList.remove('panel-hidden');
-    $('insights').classList.add('open');
-    if(innerWidth<761)$('overlay').hidden=false;
-    renderInsights();
-  }
-  function hidePanel(){
-    panelHidden=true;saveUi();document.body.classList.add('panel-hidden');
-    $('insights').classList.remove('open');$('overlay').hidden=true;renderInsights();
-  }
-  function togglePanel(){if(panelHidden||innerWidth<761&&!$('insights').classList.contains('open'))showPanel(insightTab);else hidePanel();}
   function renderSidebar(){
     const folders=state.folders,live=visible();
     const quick=[['inbox','Inbox','folder',live.filter(n=>n.folder==='Inbox').length],
       ['today','Today','calendar',live.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString()).length],
-      ['star','Starred','star',live.filter(n=>n.starred).length],['graph','Graph','graph',null],
+      ['star','Starred','star',live.filter(n=>n.starred).length],
       ['all','All notes','file',live.length],['trash','Trash','trash',state.notes.filter(n=>n.deleted).length],
       ['archive','Archive','archive',state.notes.filter(n=>n.archived&&!n.deleted).length]];
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    $('folder-list').innerHTML=folders.map(f=>'<button class="folder-item '+(filter==='folder:'+f?'active':'')+'" data-folder="'+esc(f)+'" title="Right-click for folder options">'+icon('folder')+'<span class="folder-name">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button>').join('');
+    $('folder-list').innerHTML=folders.map(f=>'<button class="folder-item '+(filter==='folder:'+f?'active':'')+'" data-folder="'+esc(f)+'" title="Right-click for folder options">'+icon('folder')+'<span class="folder-name" dir="auto">'+esc(f)+'</span><span class="count">'+live.filter(n=>n.folder===f).length+'</span></button>').join('');
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted):live;
     if(filter==='star')notes=notes.filter(n=>n.starred);
     if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
@@ -196,9 +189,25 @@
     }
     notes.sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt));
     $('notes-total').textContent=notes.length;
-    $('note-list').innerHTML=notes.length?notes.map(n=>'<button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Right-click for note options">'+icon('file')+
-      '<span class="note-name">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button>').join(''):
-      '<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
+    $('toggle-notes-list').setAttribute('aria-expanded',String(!notesCollapsed));
+    $('toggle-notes-list').classList.toggle('collapsed',notesCollapsed);
+    if(notesCollapsed){$('note-list').innerHTML='';return;}
+    const renderNote=n=>'<div class="note-row"><div class="note-row-top"><button class="note-item '+(n.id===selected?'active':'')+'" data-note-id="'+esc(n.id)+'" title="Open note · right-click for actions">'+icon('file')+
+      '<span class="note-name" dir="auto">'+esc(n.title)+'</span>'+(n.starred?'<span class="note-star">★</span>':'')+'</button>'+
+      '<button class="note-expand '+(expandedNotes.has(n.id)?'expanded':'')+'" data-expand-note="'+esc(n.id)+'" aria-label="'+(expandedNotes.has(n.id)?'Collapse':'Expand')+' preview" title="Expand / collapse preview">'+icon('chevron')+'</button></div>'+
+      (expandedNotes.has(n.id)?'<div class="note-preview" dir="auto">'+esc(plain(n.html).trim().slice(0,260)||'Empty note')+'</div>':'')+'</div>';
+    const groupMap=new Map();
+    for(const n of notes){const folder=n.folder||'Inbox';if(!groupMap.has(folder))groupMap.set(folder,[]);groupMap.get(folder).push(n);}
+    const ordered=[...groupMap.entries()].sort((a,b)=>{
+      const ai=['Inbox',...folders].indexOf(a[0]),bi=['Inbox',...folders].indexOf(b[0]);
+      return (ai<0?999:ai)-(bi<0?999:bi);
+    });
+    $('note-list').innerHTML=ordered.length?ordered.map(([folder,items])=>{
+      const folded=collapsedGroups.has(folder);
+      return '<section class="note-group"><button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
+        '<span dir="auto">'+esc(folder)+'</span><span class="count">'+items.length+'</span></button>'+
+        (folded?'':'<div class="note-group-items">'+items.map(renderNote).join('')+'</div>')+'</section>';
+    }).join(''):'<div class="empty-state">No notes here yet.<br>Press + to begin.</div>';
   }
   function updateSummary(){
     const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
@@ -219,7 +228,7 @@
     updateSummary();
     $('editor-scroll').scrollTop=0;
   }
-  function renderAll(){renderSidebar();noteTabs();renderEditor();renderInsights();updateCloudUI();}
+  function renderAll(){renderSidebar();noteTabs();renderEditor();updateCloudUI();}
   function commitEditor(){
     const n=current();if(!n)return;
     const html=safeHtml($('rich-editor').innerHTML);
@@ -231,7 +240,7 @@
     n.updatedAt=stamp();persist();updateSummary();
     // Keep the editor and cursor completely untouched while typing.
     clearTimeout(uiRenderTimer);
-    uiRenderTimer=setTimeout(()=>{renderSidebar();renderInsights();},350);
+    uiRenderTimer=setTimeout(()=>{renderSidebar();},350);
   }
   function onTitleInput(){
     const n=current();if(!n)return;
@@ -270,48 +279,6 @@
       document.execCommand('formatBlock',false,val||'p');
     }else document.execCommand(cmd,false,val);
     onEditorInput();saveSelection();
-  }
-  function graphMarkup(n){
-    if(!n)return '<p class="empty-state">Open a note to see its connections.</p>';
-    const ids=[...new Set([...linkIds(n),...backlinks(n).map(x=>x.id)])].filter(id=>id!==n.id).slice(0,7);
-    const cx=159,cy=150,ring=111;
-    const points=ids.map((id,i)=>({id,x:cx+Math.cos(-Math.PI/2+i*Math.PI*2/Math.max(1,ids.length))*ring,
-      y:cy+Math.sin(-Math.PI/2+i*Math.PI*2/Math.max(1,ids.length))*ring}));
-    const edges=points.map(p=>'<line x1="'+cx+'" y1="'+cy+'" x2="'+p.x.toFixed(1)+'" y2="'+p.y.toFixed(1)+'" />').join('');
-    const nodes=points.map(p=>{
-      const title=findNote(p.id)?.title||'Note';
-      const anchor=p.x<100?'end':p.x>216?'start':'middle';
-      const x=p.x<100?p.x-9:p.x>216?p.x+9:p.x;
-      return '<g class="graph-node" data-jump="'+esc(p.id)+'"><circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="8"/>'+
-        '<text x="'+x.toFixed(1)+'" y="'+(p.y+24).toFixed(1)+'" text-anchor="'+anchor+'">'+esc(title.length>17?title.slice(0,16)+'…':title)+'</text></g>';
-    }).join('');
-    return '<div class="graph-container"><svg class="graph-svg" viewBox="0 0 318 322" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Connections for '+esc(n.title)+'">'+
-      edges+'<circle class="center-halo" cx="159" cy="150" r="29"/><g class="graph-node current"><circle cx="159" cy="150" r="12"/><text x="159" y="180" text-anchor="middle">'+esc(n.title.length>24?n.title.slice(0,23)+'…':n.title)+'</text></g>'+nodes+'</svg></div>';
-  }
-  function linkedList(items){
-    if(!items.length)return '<p class="empty-state">Nothing linked here yet. Add a link from the formatting bar.</p>';
-    return items.map(n=>'<button class="linked-item" data-jump="'+esc(n.id)+'">'+icon('file')+'<div>'+esc(n.title)+
-      '<span class="link-sub">'+esc(plain(n.html).slice(0,85))+'</span></div><span class="link-arrow">›</span></button>').join('');
-  }
-  function renderInsights(){
-    const n=current(),incoming=backlinks(n),outgoing=linkIds(n).map(findNote).filter(Boolean);
-    document.querySelectorAll('.insights-tab').forEach(b=>b.classList.toggle('active',b.dataset.panel===insightTab));
-    document.body.classList.toggle('panel-hidden',panelHidden);
-    let html='';
-    if(insightTab==='graph'){
-      html='<section class="insight-section"><h3>Graph view</h3>'+graphMarkup(n)+'</section>'+
-        '<section class="insight-section"><h3>Backlinks ('+incoming.length+')</h3>'+linkedList(incoming)+'</section>'+
-        '<section class="insight-section"><h3>Linked notes ('+outgoing.length+')</h3>'+linkedList(outgoing)+'</section>';
-    }else if(insightTab==='backlinks'){
-      html='<section class="insight-section"><h3>Backlinks ('+incoming.length+')</h3>'+linkedList(incoming)+'</section>'+
-        '<section class="insight-section"><h3>Outgoing links ('+outgoing.length+')</h3>'+linkedList(outgoing)+'</section>';
-    }else{
-      html='<section class="insight-section"><h3>Note details</h3>'+
-        (n?[['Folder',n.folder],['Last edit',new Date(n.updatedAt).toLocaleString()],['Words',plain(n.html).trim().split(/\s+/).filter(Boolean).length],
-        ['Favorite',n.starred?'Yes':'No']].map(([k,v])=>'<div class="detail-row"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>').join(''):'')+
-        '</section>';
-    }
-    $('insights-content').innerHTML=html;
   }
   function ask(title,label,defaultValue=''){
     return new Promise(resolve=>{
