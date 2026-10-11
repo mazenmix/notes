@@ -9,7 +9,7 @@
   const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',FONT='mxnotes.appearance.font',FONT_SIZE='mxnotes.appearance.fontSize',AUTOCORRECT='mxnotes.writing.autocorrect',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
-    version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',folderParents:{},folderOrder:[],noteOrder:{},organizationUpdatedAt:'2025-01-01T00:00:00.000Z',
+    version:3,folderTrash:{},updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',folderParents:{},folderOrder:[],noteOrder:{},organizationUpdatedAt:'2025-01-01T00:00:00.000Z',
     folders:[],
     notes:[
       {id:'welcome',title:'A calmer mind',folder:'Life',html:'<h2>Thoughts on a simpler life</h2><p>Lately I’ve been thinking a lot about how much calmer life feels when things are simple. Not easier, but simpler. Fewer tabs, fewer commitments, fewer things fighting for my attention.</p><p>It’s not about doing less, but about making space for what actually matters.</p><ul><li>More time for deep work</li><li>A cleaner headspace</li><li>People who feel like home</li><li>A life that feels intentional</li></ul><blockquote>Simplicity is not the absence of things, but the presence of what matters.</blockquote><h2>Related</h2><p>Keep the ideas connected: <a data-note-id="habits">Habits</a> · <a data-note-id="focus">Focus</a> · <a data-note-id="morning">A better morning</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
@@ -110,6 +110,13 @@
       updatedAt:typeof n.updatedAt==='string'?n.updatedAt:stamp(),
       starred:!!n.starred,archived:!!n.archived,deleted:!!n.deleted,purged:!!n.purged
     }));
+    const folderTrash={};
+    if(x.folderTrash&&typeof x.folderTrash==='object'&&!Array.isArray(x.folderTrash)){
+      for(const [name,value] of Object.entries(x.folderTrash)){
+        if(folderSet.has(name)&&value&&typeof value==='object')
+          folderTrash[name]={deleted:!!value.deleted,purged:!!value.purged,updatedAt:String(value.updatedAt||'').slice(0,50)};
+      }
+    }
     const noteIds=new Set(notes.map(n=>n.id)),noteOrder={};
     if(x.noteOrder&&typeof x.noteOrder==='object'&&!Array.isArray(x.noteOrder)){
       for(const [folder,values] of Object.entries(x.noteOrder)){
@@ -120,7 +127,7 @@
     return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),
       foldersUpdatedAt:typeof x.foldersUpdatedAt==='string'?x.foldersUpdatedAt:(x.updatedAt||stamp()),
       organizationUpdatedAt:typeof x.organizationUpdatedAt==='string'?x.organizationUpdatedAt:(x.foldersUpdatedAt||x.updatedAt||stamp()),
-      folders,folderParents:parents,folderOrder:order,noteOrder,notes
+      folders,folderParents:parents,folderOrder:order,noteOrder,folderTrash,notes
     };
   }
   let state;
@@ -145,7 +152,7 @@
   let expandedNotes=new Set(Array.isArray(ui.expandedNotes)?ui.expandedNotes:[]);
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
-  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
+  let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f)):[];
   // Previous releases auto-pinned every folder. Switch once to explicit-only
   // pins without touching saved folders, notes or D1 workspace data.
   const EXPLICIT_PINS_KEY='mxnotes.pins.explicit.20261011';
@@ -166,11 +173,19 @@
   let pendingDialog=null,savedSelection=null,menuContext=null,toastTimer=null,longTimer=null,uiRenderTimer=null,skipClickUntil=0;
   const current=()=>state.notes.find(n=>n.id===selected)||null;
   // The Archive navigation is retired; all non-trashed notes remain accessible.
-  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.purged);
+  const visible=()=>state.notes.filter(n=>!n.deleted&&!n.purged&&!folderTrashed(n.folder));
   const findNote=id=>state.notes.find(n=>n.id===id);
   const folderLabel=name=>name==='Inbox'?'Notes':name;
+  const folderTrashed=name=>{
+    const visited=new Set();
+    for(let p=name;p&&!visited.has(p);p=state.folderParents?.[p]){
+      visited.add(p);
+      if(state.folderTrash?.[p]?.deleted)return true;
+    }
+    return false;
+  };
   const folderParent=name=>state.folderParents?.[name]||null;
-  const folderChildren=parent=>(state.folderOrder||state.folders).filter(f=>state.folders.includes(f)&&folderParent(f)===parent);
+  const folderChildren=parent=>(state.folderOrder||state.folders).filter(f=>state.folders.includes(f)&&!folderTrashed(f)&&folderParent(f)===parent);
   const folderDescends=(name,ancestor)=>{
     for(let p=folderParent(name),seen=new Set();p&&!seen.has(p);p=folderParent(p)){
       if(p===ancestor)return true;
@@ -311,9 +326,9 @@
     if(searchFocus)setTimeout(()=>$('search').focus(),60);
   }
   function renderSidebar(){
-    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f));
+    pinnedFolders=pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f));
     const live=visible(),pinSet=new Set(pinnedFolders),parent=name=>folderParent(name);
-    const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name));
+    const sortedFolders=state.folderOrder.filter(name=>state.folders.includes(name)&&!folderTrashed(name));
     const sortedPins=pinnedFolders.filter(name=>state.folders.includes(name));
     const renderPinned=(folder,depth=0,seen=new Set())=>{
       if(seen.has(folder)||depth>12)return '';
@@ -793,7 +808,7 @@
     {divider:true},
     {ico:'archive',label:n.archived?'Unarchive':'Archive',action:'archive-note'},
     {ico:'download',label:'Export HTML',action:'export-note'},
-    {ico:'trash',label:n.deleted?'Delete permanently':'Move to trash',action:'delete-note',danger:true},
+    {ico:'trash',label:n.deleted?'Keep in Trash':'Move to trash',action:'delete-note',danger:!n.deleted},
     ...(n.deleted?[{ico:'refresh',label:'Restore',action:'restore-note'}]:[])
   ];
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
@@ -1110,6 +1125,16 @@
     markOrganizationChanged();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
+    if(folder==='Inbox'||!state.folders.includes(folder))return;
+    const now=stamp();
+    state.folderTrash={...state.folderTrash,[folder]:{deleted:true,purged:false,updatedAt:now}};
+    // Keep folder hierarchy and original note locations for one-click Restore.
+    tabs=tabs.filter(id=>id!==folderKey(folder));
+    if(activeTab===folderKey(folder))activeTab=selected;
+    pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    markOrganizationChanged();saveUi();renderAll();showToast('Folder moved to Trash');
+  }
+  function oldRemoveFolder(folder){
     state.folders=state.folders.filter(f=>f!==folder);pinnedFolders=pinnedFolders.filter(f=>f!==folder);
     state.folderOrder=state.folderOrder.filter(f=>f!==folder);
     const parents={...state.folderParents};
@@ -1131,11 +1156,18 @@
       case 'open-trash':setFilter('trash');break;
       case 'empty-trash':{
         const pending=state.notes.filter(item=>item.deleted&&!item.purged);
-        if(!pending.length){showToast('Trash is already empty');break;}
-        const ok=await confirmAction('Empty Trash?','Permanently delete '+pending.length+' notes? You cannot undo this. Consider exporting a backup first.');
+        const trashedFolders=state.folders.filter(f=>state.folderTrash?.[f]?.deleted&&!state.folderTrash?.[f]?.purged);
+        if(!pending.length&&!trashedFolders.length){showToast('Trash is already empty');break;}
+        const ok=await confirmAction('Empty Trash?','Permanently delete '+pending.length+' notes and '+trashedFolders.length+' folders? This cannot be undone.');
         if(!ok)break;
         const now=stamp();
         pending.forEach(item=>{item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.starred=false;item.archived=false;item.updatedAt=now;});
+        for(const folder of trashedFolders){
+          state.folderTrash[folder]={deleted:true,purged:true,updatedAt:now};
+          state.notes.filter(item=>item.folder===folder&&!item.purged).forEach(item=>{
+            item.purged=true;item.deleted=true;item.html='';item.title='Deleted note';item.updatedAt=now;
+          });
+        }
         const removed=new Set(pending.map(item=>item.id));
         tabs=tabs.filter(id=>!removed.has(id));
         if(removed.has(selected))selected=visible()[0]?.id||null;
@@ -1163,10 +1195,8 @@
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
       case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
       case 'delete-note':if(n){
-        if(n.deleted){
-          if(!await confirmAction('Permanently delete?','This note cannot be restored.'))return;
-          n.purged=true;n.deleted=true;n.html='';n.title='Deleted note';n.updatedAt=stamp();
-        }else{n.deleted=true;n.updatedAt=stamp();}
+        if(n.deleted){showToast('Use Empty Trash to delete permanently');return;}
+        n.deleted=true;n.updatedAt=stamp();
         tabs=tabs.filter(id=>id!==n.id);
         if(selected===n.id)selected=visible()[0]?.id||null;
         if(activeTab===n.id)activeTab=tabs.at(-1)||selected;
@@ -1198,7 +1228,7 @@
         const name=await ask('Rename folder','New folder name',folder);
         if(name!==null)folderRename(folder,name.trim());
       }break;
-      case 'folder-delete':if(await confirmAction('Delete folder?','Notes in this folder will move to Notes. Nested subfolders will remain at the top level.'))removeFolder(folder);break;
+      case 'folder-delete':removeFolder(folder);break;
       case 'focus':toggleFocus();break;
       case 'edit-copy':case 'edit-cut':case 'edit-paste':case 'edit-replace':case 'edit-select-all':case 'edit-bold':case 'edit-italic':case 'translate-ar':case 'translate-en':case 'spellcheck-help':case 'find-note':await runEditAction(action,context);break;
       case 'sync':await syncNow();break;
@@ -1342,7 +1372,7 @@
     const orgLocal=Date.parse(local.organizationUpdatedAt||'')>=Date.parse(r.organizationUpdatedAt||'');
     const org=orgLocal?local:r;
     return normalize({version:3,notes:[...merged.values()],folders,foldersUpdatedAt,
-      folderParents:org.folderParents,folderOrder:org.folderOrder,noteOrder:org.noteOrder,
+      folderParents:org.folderParents,folderOrder:org.folderOrder,noteOrder:org.noteOrder,folderTrash:org.folderTrash,
       organizationUpdatedAt:org.organizationUpdatedAt,updatedAt:
       Date.parse(local.updatedAt)>Date.parse(r.updatedAt)?local.updatedAt:r.updatedAt});
   }
@@ -1401,7 +1431,7 @@
       revision=response.revision||0;
       if(response.workspace){
         const merged=pristine?normalize(response.workspace):mergeWorkspaces(state,response.workspace);
-        if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)||JSON.stringify(merged.folderParents)!==JSON.stringify(state.folderParents)||JSON.stringify(merged.folderOrder)!==JSON.stringify(state.folderOrder)||JSON.stringify(merged.noteOrder)!==JSON.stringify(state.noteOrder)){
+        if(JSON.stringify(merged.notes)!==JSON.stringify(state.notes)||JSON.stringify(merged.folders)!==JSON.stringify(state.folders)||JSON.stringify(merged.folderParents)!==JSON.stringify(state.folderParents)||JSON.stringify(merged.folderOrder)!==JSON.stringify(state.folderOrder)||JSON.stringify(merged.noteOrder)!==JSON.stringify(state.noteOrder)||JSON.stringify(merged.folderTrash)!==JSON.stringify(state.folderTrash)){
           state=merged;pristine=false;localStorage.setItem(STORE,JSON.stringify(state));
           if(!isEditing)renderAll();
           dirty=JSON.stringify(merged)!==JSON.stringify(response.workspace);
