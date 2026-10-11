@@ -146,6 +146,10 @@
   let showAllGroups=new Set(Array.isArray(ui.showAllGroups)?ui.showAllGroups:[]);
   // Pinned navigation is separate from the persisted notes and folder catalog.
   let pinnedFolders=Array.isArray(ui.pinnedFolders)?ui.pinnedFolders.filter(f=>state.folders.includes(f)):[];
+  // Previous releases auto-pinned every folder. Switch once to explicit-only
+  // pins without touching saved folders, notes or D1 workspace data.
+  const EXPLICIT_PINS_KEY='mxnotes.pins.explicit.20261011';
+  if(!localStorage.getItem(EXPLICIT_PINS_KEY)){pinnedFolders=[];localStorage.setItem(EXPLICIT_PINS_KEY,'1');}
   let collapsedPinnedFolders=new Set(Array.isArray(ui.collapsedPinnedFolders)?ui.collapsedPinnedFolders:[]);
   let draggingFolder=null,draggedItem=null,dragTarget=null,dragHoverTimer=null;
   let autoCorrect=localStorage.getItem(AUTOCORRECT)!=='off';
@@ -309,11 +313,8 @@
     $('trash-count').textContent=state.notes.filter(n=>n.deleted&&!n.purged).length||'';
     $('quick-links').innerHTML=quick.map(([id,title,ico,count])=>'<button class="quick-link '+(filter===id?'active':'')+'" data-filter="'+id+'">'+icon(ico)+
       '<span>'+esc(title)+'</span>'+(count?'<span class="count">'+count+'</span>':'')+'</button>').join('');
-    let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='archive'?state.notes.filter(n=>n.archived&&!n.deleted&&!n.purged):live;
-    if(filter==='star')notes=notes.filter(n=>n.starred);
-    if(filter==='today')notes=notes.filter(n=>new Date(n.updatedAt).toDateString()===new Date().toDateString());
-    if(filter==='inbox')notes=notes.filter(n=>n.folder==='Inbox');
-    if(filter.startsWith('folder:'))notes=notes.filter(n=>n.folder===filter.slice(7));
+    // Keep the Notes tree complete while navigating folder tabs or All Notes.
+    let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):live;
     if(search.trim()){
       const q=search.toLocaleLowerCase();
       notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
@@ -336,14 +337,14 @@
       const children=groupFolders.filter(f=>f!=='Inbox'&&
       ((folder==='Inbox'&&!folderSet.has(parent(f)))||parent(f)===folder));
       return '<section class="note-group" data-note-group="'+esc(folder)+'" style="--group-depth:'+depth+'">'+
-        '<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="'+(folder!=='Inbox')+'" aria-expanded="'+(!folded)+'" title="Drag this folder onto another to nest · drop a note to move it">'+icon('chevron')+
-          '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
-        (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:6).map(renderNote).join('')+
+        (folder==='Inbox'?'':'<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="true" aria-expanded="'+(!folded)+'" title="Drag to reorder or nest; drop notes here">'+icon('chevron')+
+          '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>')+
+        (folded&&folder!=='Inbox'?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:6).map(renderNote).join('')+
            (items.length>6?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+
            children.map(c=>renderGroup(c,depth+1,visited)).join('')+'</div>')+
       '</section>';
     };
-    $('note-list').innerHTML=renderGroup('Inbox');
+    $('note-list').innerHTML=filter==='trash'?'<div class="trash-list-heading">Trash · '+notes.length+'</div>'+notes.map(renderNote).join(''):renderGroup('Inbox');
   }
   function updateSummary(){
     const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
@@ -638,6 +639,7 @@
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
+    {ico:'star',label:pinnedFolders.includes(folder)?'Unpin folder':'Pin folder',action:pinnedFolders.includes(folder)?'folder-unpin':'folder-pin'},
     {ico:'folder',label:'New subfolder',action:'folder-subfolder'},
     ...(folderParent(folder)?[{ico:'folder',label:'Move folder to top level',action:'folder-to-root'}]:[]),
     {ico:'edit',label:'Rename folder',action:'folder-rename'},
@@ -1013,6 +1015,10 @@
       }break;
       case 'export-note':if(n)exportNote(n);break;
       case 'folder-new':newNote(folder);break;
+      case 'folder-pin':if(folder!=='Inbox'&&state.folders.includes(folder)&&!pinnedFolders.includes(folder)){
+        pinnedFolders.push(folder);saveUi();renderSidebar();showToast('Folder pinned');
+      }break;
+      case 'folder-unpin':pinnedFolders=pinnedFolders.filter(f=>f!==folder);saveUi();renderSidebar();showToast('Folder unpinned');break;
       case 'folder-subfolder':{
         const name=await ask('New subfolder','Folder name inside '+folder);
         if(!name?.trim())break;
