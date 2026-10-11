@@ -50,15 +50,16 @@
     <aside class="sidebar" id="sidebar" aria-label="Notes navigation">
       <div class="sidebar-head"><button class="icon-button sidebar-close" id="close-sidebar" aria-label="Close navigation"><svg><use href="#i-x"/></svg></button></div>
       <div class="search-wrap"><svg><use href="#i-search"/></svg><input id="search" type="search" placeholder="Search notes..." aria-label="Search notes"/><kbd>⌘K</kbd></div>
+      <button class="create-note create-folder" id="new-folder"><svg><use href="#i-folder"/></svg> New folder <svg class="create-trailing"><use href="#i-plus"/></svg></button>
       <button class="create-note" id="new-note"><svg><use href="#i-plus"/></svg> New note <svg class="create-trailing"><use href="#i-edit"/></svg></button>
       <div class="side-scroll" id="side-scroll">
-        <div id="quick-links"></div>
-        <div class="section-heading"><span>PINNED FOLDERS</span><button id="new-folder" aria-label="Add folder" title="New folder"><svg><use href="#i-plus"/></svg></button></div>
-        <div id="folder-list"></div>
-        <div class="section-heading notes-heading"><button id="toggle-notes-list" class="section-collapse" type="button" aria-expanded="true" title="Collapse / expand notes"><svg><use href="#i-chevron"/></svg><span>NOTES</span></button><span id="notes-total" class="tiny-count"></span></div>
-        <div id="note-list"></div>
+        <div class="section-heading notes-heading"><button id="toggle-notes-list" class="section-collapse" type="button" aria-expanded="true" title="Collapse / expand Notes folder"><svg><use href="#i-chevron"/></svg><span>NOTES</span></button><span id="notes-total" class="tiny-count"></span></div>
+        <div id="note-list" aria-label="Notes and folders"></div>
+        <div id="quick-links" aria-label="All Notes and Favorites"></div>
+        <div class="section-heading pinned-heading" id="pinned-drop-area" title="Drag a folder here to pin"><span>PINNED FOLDERS</span><icon aria-hidden="true"></icon></div>
+        <div id="folder-list" aria-label="Pinned shortcuts"></div>
       </div>
-      <div class="sidebar-foot"><span class="status-led"></span><span id="sidebar-status">Saved on this device</span><button id="sidebar-cloud" aria-label="Cloud settings"><svg><use href="#i-cloud"/></svg></button></div>
+      <div class="sidebar-foot"><button id="trash-link" class="quick-link trash-bottom" type="button" aria-label="Trash"><svg><use href="#i-trash"/></svg><span>Trash</span><span id="trash-count" class="count"></span></button></div>
     </aside>
     <main class="editor-pane" id="editor-pane">
       <div class="tabbar desktop-tabbar"><div id="open-tabs" class="open-tabs" role="tablist" aria-label="Open notes"></div><button class="new-tab" id="tab-new" title="Open new note tab" aria-label="New tab"><svg><use href="#i-plus"/></svg></button></div>
@@ -141,9 +142,18 @@
       <label for="auto-correct"><span class="settings-section-label">Writing</span><span>Auto-correct clear typos after Space</span></label>
       <input id="auto-correct" type="checkbox" />
     </section>
-    <section class="appearance-setting" aria-label="Appearance">
-      <div><span class="settings-section-label">Appearance</span><p id="theme-mode">Dark mode</p></div>
-      <button class="appearance-button" id="settings-theme-toggle" type="button"><svg><use href="#i-sun"/></svg> Switch to light</button>
+    <section class="appearance-setting theme-settings" aria-label="Appearance">
+      <div class="theme-settings-head"><span class="settings-section-label">THEMES</span><span id="theme-mode">Dark</span></div>
+      <div class="theme-grid" id="theme-grid" role="group" aria-label="Choose website theme">
+        <button type="button" class="theme-tile" data-pick-theme="dark" title="Classic Dark"><span class="theme-swatch" style="--theme-bg:#111417;--theme-accent:#90b8d4"></span>Dark</button>
+        <button type="button" class="theme-tile" data-pick-theme="light" title="Classic Light"><span class="theme-swatch" style="--theme-bg:#f7f9fb;--theme-accent:#527994"></span>Light</button>
+        <button type="button" class="theme-tile" data-pick-theme="midnight" title="Midnight Navy"><span class="theme-swatch" style="--theme-bg:#101b2b;--theme-accent:#6ba6d9"></span>Midnight</button>
+        <button type="button" class="theme-tile" data-pick-theme="sepia" title="Warm Sepia"><span class="theme-swatch" style="--theme-bg:#f4ead7;--theme-accent:#a47d56"></span>Sepia</button>
+        <button type="button" class="theme-tile" data-pick-theme="nord" title="Nord Frost"><span class="theme-swatch" style="--theme-bg:#2e3440;--theme-accent:#88c0d0"></span>Nord</button>
+        <button type="button" class="theme-tile" data-pick-theme="forest" title="Forest Green"><span class="theme-swatch" style="--theme-bg:#162b25;--theme-accent:#78b89a"></span>Forest</button>
+        <button type="button" class="theme-tile" data-pick-theme="rose" title="Dusty Rose"><span class="theme-swatch" style="--theme-bg:#30242e;--theme-accent:#d89bb8"></span>Rose</button>
+        <button type="button" class="theme-tile" data-pick-theme="solarized" title="Solarized Dark"><span class="theme-swatch" style="--theme-bg:#002b36;--theme-accent:#2aa198"></span>Solarized</button>
+      </div>
     </section>
     <div class="form-grid" id="cloud-login-fields"><label>Your private Cloudflare password<input id="owner-password" type="password" placeholder="Owner password" autocomplete="current-password"/></label></div>
     <div class="modal-actions"><button class="primary" id="sign-in">Unlock cloud vault</button><button class="secondary" id="sign-out" hidden>Sign out</button></div>
