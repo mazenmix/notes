@@ -132,6 +132,11 @@
         <button class="format-btn" data-command="checklist" title="Checklist" aria-label="Checklist"><svg><use href="#i-check"/></svg></button>
         <button class="format-btn" data-command="createLink" title="Insert link" aria-label="Insert link"><svg><use href="#i-link"/></svg></button>
         <span class="format-divider"></span>
+        <button type="button" class="format-btn extra-tool" id="attach-file" title="Attach image, PDF or file" aria-label="Attach file">📎</button>
+        <input id="attachment-input" type="file" multiple hidden accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip,.json,.js,.py,.html,.css,.md,*/*" />
+        <button type="button" class="format-btn extra-tool" id="insert-table" title="Insert editable table" aria-label="Insert table"><svg><use href="#i-list"/></svg><span class="tool-mini-grid">▦</span></button>
+        <button type="button" class="format-btn extra-tool code-tool" id="insert-code" title="Insert syntax-highlighted code block" aria-label="Insert code block">&lt;/&gt;</button>
+        <span class="format-divider"></span>
         <button class="format-btn paint-button paint-ink" id="text-color-picker" type="button" title="Text color · 10 colors" aria-label="Text color" aria-expanded="false"><span class="paint-letter">A</span><span class="paint-underline"></span></button>
         <button class="format-btn paint-button paint-marker" id="highlight-picker" type="button" title="Highlight · 10 colors" aria-label="Highlight text" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 18 3.1-3.1m1.2-1.2 7.9-7.9a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8l-7.9 7.9-3.2 1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 21h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="marker-underline"></span></button>
         <span class="format-divider"></span>
