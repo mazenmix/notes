@@ -753,3 +753,81 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .rich-editor [data-note-title="1"]{font-size:clamp(23px,6vw,30px);margin-bottom:15px}
   .folder-drag-handle{opacity:.7}
 }
+
+
+/* MX Note — nested folder tree and precision drag-and-drop */
+#folder-list,#note-list{position:relative}
+.folder-tree-node{position:relative;min-width:0}
+.folder-tree-node>.pinned-folder-row{
+  padding-inline-start:calc(var(--folder-depth,0) * 15px);
+  margin:2px 3px;min-height:37px;
+  display:flex;align-items:center;gap:1px;position:relative;
+  border:1px solid transparent;border-radius:10px;
+  transition:background-color .15s,border-color .15s,opacity .15s,transform .15s;
+}
+.folder-tree-children{
+  position:relative;margin-inline-start:11px;
+  animation:mx-tree-open .18s ease both;
+}
+.folder-tree-children:before{
+  content:"";position:absolute;top:2px;bottom:7px;left:13px;
+  border-left:1px solid #53677b42;pointer-events:none
+}
+@keyframes mx-tree-open{from{opacity:.65;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.pinned-folder-row .folder-drag-handle{
+  width:17px;flex:0 0 17px;font-size:15px;cursor:grab;
+}
+.folder-twisty,.folder-twisty-placeholder{display:grid;place-items:center;flex:0 0 18px;width:18px;height:27px}
+.folder-twisty{border:0;border-radius:6px;background:transparent;color:#869cac;cursor:pointer}
+.folder-twisty:hover{background:#2a3743;color:#d5e5f4}
+.folder-twisty svg{width:12px;height:12px;transition:transform .18s cubic-bezier(.2,.7,.3,1)}
+.folder-twisty.collapsed svg{transform:rotate(-90deg)}
+.pinned-folder-row .folder-item{flex:1;min-width:0}
+.pinned-folder-row .folder-name{overflow:hidden;text-overflow:ellipsis}
+.pinned-folder-row.dragging,.note-row.dragging{opacity:.4;filter:saturate(.5);transform:scale(.985)}
+.pinned-folder-row.drop-inside,.note-group-toggle.drop-inside,
+.quick-link.drop-inside{
+  background:linear-gradient(90deg,#27435a,#253847)!important;
+  border:1px solid #81bde6!important;
+  outline:1px solid #2b89cc4d;
+  box-shadow:inset 0 0 0 1px #8cbce029,0 0 18px #23618d24;
+  color:#ebf6ff!important;
+}
+.pinned-folder-row.drop-inside .folder-name{color:#edf7ff}
+.note-group-toggle.drop-inside{border-radius:9px}
+.pinned-folder-row.drop-before::before,.pinned-folder-row.drop-after::after,
+.note-row.drop-before::before,.note-row.drop-after::after{
+  content:"";position:absolute;z-index:4;left:8px;right:8px;height:3px;
+  background:#83bee7;border-radius:9px;box-shadow:0 0 8px #4aa5e277;pointer-events:none
+}
+.pinned-folder-row.drop-before::before,.note-row.drop-before::before{top:-3px}
+.pinned-folder-row.drop-after::after,.note-row.drop-after::after{bottom:-3px}
+.note-row{position:relative;cursor:grab;min-height:32px;transition:background-color .16s,transform .16s,opacity .16s}
+.note-row:active{cursor:grabbing}
+.note-row .note-item{width:100%}
+.note-group-toggle{position:relative;border:1px solid transparent;min-height:34px}
+.note-group[data-note-group]{margin-bottom:4px}
+.note-group .note-group-items>.note-group{
+  padding-inline-start:calc(min(var(--group-depth,0),6) * 9px);
+  margin-inline-start:4px;border-inline-start:1px solid #475d733b;
+}
+.note-group .note-group-items>.note-group .note-group-toggle{font-size:11px}
+#note-list .note-group-items{min-width:0}
+.sidebar .quick-link[data-filter="inbox"]{border:1px solid transparent}
+[data-theme="light"] .folder-tree-children:before{border-color:#b0c3d36b}
+[data-theme="light"] .pinned-folder-row.drop-inside,
+[data-theme="light"] .note-group-toggle.drop-inside,
+[data-theme="light"] .quick-link.drop-inside{
+  background:linear-gradient(90deg,#d3e6f4,#e5f1f8)!important;
+  border-color:#699abb!important;color:#294a65!important
+}
+[data-theme="light"] .pinned-folder-row.drop-before::before,
+[data-theme="light"] .pinned-folder-row.drop-after::after,
+[data-theme="light"] .note-row.drop-before::before,
+[data-theme="light"] .note-row.drop-after::after{background:#468fbf}
+@media(max-width:760px){
+  .folder-tree-children{margin-inline-start:8px}
+  .folder-tree-node>.pinned-folder-row{min-height:43px;padding-inline-start:calc(var(--folder-depth,0) * 12px)}
+  .note-row{min-height:39px}
+}
+@media(prefers-reduced-motion:reduce){.folder-tree-children{animation:none!important}}
