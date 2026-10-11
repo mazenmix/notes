@@ -332,7 +332,7 @@
       const folded=collapsedGroups.has(folder);
       const children=groupFolders.filter(f=>f!=='Inbox'&&parent(f)===folder);
       return '<section class="note-group" data-note-group="'+esc(folder)+'" style="--group-depth:'+depth+'">'+
-        '<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" aria-expanded="'+(!folded)+'">'+icon('chevron')+
+        '<button class="note-group-toggle '+(folded?'collapsed':'')+'" data-group-toggle="'+esc(folder)+'" data-drop-folder="'+esc(folder)+'" data-drag-folder="'+esc(folder)+'" draggable="'+(folder!=='Inbox')+'" aria-expanded="'+(!folded)+'" title="Drag this folder onto another to nest · drop a note to move it">'+icon('chevron')+
           '<span dir="auto">'+esc(folderLabel(folder))+'</span><span class="count">'+items.length+'</span></button>'+
         (folded?'':'<div class="note-group-items">'+items.slice(0,showAllGroups.has(folder)?items.length:6).map(renderNote).join('')+
            (items.length>6?'<button class="notes-show-more" data-show-group="'+esc(folder)+'">'+(showAllGroups.has(folder)?'Show fewer':'Show all '+items.length+' notes')+'</button>':'')+
@@ -1291,7 +1291,6 @@
       }
       if(target.type==='note')return null;
       if(target.id==='Inbox')return 'inside';
-      if(target.node.hasAttribute('data-drop-folder'))return 'inside';
       return ratio<.25?'before':ratio>.75?'after':'inside';
     }
     function validDrop(target,placement){
@@ -1365,9 +1364,7 @@
       if(dragTarget!==signature){
         clearTimeout(dragHoverTimer);dragHoverTimer=null;
         dragTarget=signature;
-        if(placement==='inside'&&target.type==='folder'&&collapsedPinnedFolders.has(target.id)){
-          dragHoverTimer=setTimeout(()=>{collapsedPinnedFolders.delete(target.id);saveUi();renderSidebar();},620);
-        }
+
       }
       sidebar.querySelectorAll('.drop-before,.drop-after,.drop-inside').forEach(x=>x.classList.remove('drop-before','drop-after','drop-inside'));
       target.node.classList.add('drop-'+placement);
@@ -1432,12 +1429,12 @@
       if(e.target.closest('.modal,.menu-popover,.style-popover'))return;
       if(!e.target.closest('.app-shell'))return;
       e.preventDefault();
-      const folder=e.target.closest('[data-folder],[data-rename-folder]');
+      const folder=e.target.closest('[data-folder],[data-rename-folder],[data-group-toggle]');
       const trash=e.target.closest('[data-filter="trash"]');
       const editor=e.target.closest('#rich-editor,#note-title');
       const note=editor?null:e.target.closest('[data-note-id],[data-tab],[data-folder-note]');
       if(trash){showMenu(e.clientX,e.clientY,trashOptions(),{});return;}
-      if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder;
+      if(folder){const name=folder.dataset.folder||folder.dataset.renameFolder||folder.dataset.groupToggle;
         showMenu(e.clientX,e.clientY,folderOptions(name),{folder:name});return;}
       if(note){const id=note.dataset.noteId||note.dataset.tab||note.dataset.folderNote;
         if(isFolderTab(id)){showMenu(e.clientX,e.clientY,folderOptions(id.slice(7)),{folder:id.slice(7)});return;}
