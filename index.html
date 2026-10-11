@@ -47,6 +47,31 @@
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.3 8.5 8 11 4.7-2.5 8-6 8-11V5z"/><path d="m8 12 3 3 5-6"/></symbol>
   </svg>
   <div class="app-shell" id="shell">
+    <section class="ios-folders-screen" id="ios-folders-screen" aria-label="Folders" hidden>
+      <div class="ios-folders-top">
+        <div class="ios-top-actions">
+          <button id="ios-add-folder" class="ios-round-action" type="button" aria-label="New folder" title="New folder"><svg><use href="#i-folder"/></svg><span class="ios-add-plus">+</span></button>
+          <button id="ios-edit-folders" class="ios-pill-action" type="button" aria-pressed="false">Edit</button>
+        </div>
+        <h1>Folders</h1>
+      </div>
+      <div class="ios-folders-scroll" id="ios-folders-scroll">
+        <h2>MX Cloud</h2>
+        <div class="ios-folder-group" id="ios-folder-groups"></div>
+        <div id="ios-pinned-section" class="ios-pinned-section" hidden></div>
+      </div>
+    </section>
+    <section class="ios-notes-screen" id="ios-notes-screen" aria-label="Notes list" hidden>
+      <div class="ios-list-top">
+        <button id="ios-back-folders" class="ios-back-button" type="button" aria-label="Back to folders"><svg><use href="#i-arrow"/></svg><span>Folders</span></button>
+        <button id="ios-list-more" class="ios-round-action" type="button" aria-label="Folder actions"><svg><use href="#i-more"/></svg></button>
+      </div>
+      <div class="ios-notes-scroll" id="ios-notes-scroll">
+        <h1 id="ios-list-title">Notes</h1>
+        <p id="ios-list-count">0 Notes</p>
+        <div id="ios-notes-groups"></div>
+      </div>
+    </section>
     <aside class="sidebar" id="sidebar" aria-label="Notes navigation">
       <div class="sidebar-head"><button class="icon-button sidebar-close" id="close-sidebar" aria-label="Close navigation"><svg><use href="#i-x"/></svg></button></div>
       <div class="search-wrap"><svg><use href="#i-search"/></svg><input id="search" type="search" placeholder="Search notes..." aria-label="Search notes"/><kbd>⌘K</kbd></div>
@@ -64,7 +89,7 @@
     <main class="editor-pane" id="editor-pane">
       <div class="tabbar desktop-tabbar"><div id="open-tabs" class="open-tabs" role="tablist" aria-label="Open notes"></div><button class="new-tab" id="tab-new" title="Open new note tab" aria-label="New tab"><svg><use href="#i-plus"/></svg></button></div>
       <div class="editor-toolbar">
-        <button class="icon-button mobile-menu" id="open-sidebar" aria-label="Open notes"><svg><use href="#i-menu"/></svg></button>
+        <button class="icon-button mobile-menu" id="open-sidebar" aria-label="Back to notes"><svg><use href="#i-arrow"/></svg></button>
         <button class="mobile-note-title" id="mobile-title">A calmer mind <svg><use href="#i-chevron"/></svg></button>
         <span class="desktop-breadcrumb" id="breadcrumb">Life <span> / </span> A calmer mind</span>
         <div class="toolbar-spacer"></div>
@@ -112,6 +137,10 @@
       </div>
       <footer class="editor-footer"><span id="word-count">0 words</span><span class="footer-separator">•</span><span id="character-count">0 characters</span><span class="footer-spacer"></span><span id="format-label">Rich text · Autosaved</span><span class="footer-separator">•</span><span class="footer-aa">Aa</span></footer>
     </main>
+    <div class="ios-bottom-dock" id="ios-bottom-dock" hidden>
+      <label class="ios-search-pill"><svg><use href="#i-search"/></svg><input id="ios-search" type="search" placeholder="Search" autocomplete="off" aria-label="Search all notes"/></label>
+      <button class="ios-compose" id="ios-compose" type="button" title="New note" aria-label="Create a note"><svg><use href="#i-edit"/></svg></button>
+    </div>
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="mobile-nav-btn active" data-mobile="notes" aria-label="Notes"><svg><use href="#i-file"/></svg><span>Notes</span></button>
       <button class="mobile-nav-btn" data-mobile="star" aria-label="Favorites"><svg><use href="#i-star"/></svg><span>Favorites</span></button>
