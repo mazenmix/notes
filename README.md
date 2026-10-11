@@ -1,66 +1,53 @@
 # MX Notes
 
-A responsive dark writing workspace inspired by **iA Writer's typography** and **Obsidian's linked-note organization**. Dependency-free, local-first, and designed for phones and desktops.
-
-**Website URL (when GitHub Pages is enabled):** https://mazenmix.github.io/notes/
+A polished private note-taking web app, combining **Obsidian-inspired type and linked notes** with direct **Apple Notes-style rich-text editing**, deployed to **https://mxnote.pages.dev/** from the GitHub repository `mazenmix/notes`.
 
 ## Features
 
-- Dark, minimal typography with IBM Plex Mono
-- Desktop rail + sidebar + editor + graph/backlinks
-- Mobile full-width writing with bottom navigation and slide-out notes list
-- Notes, folders, favorite/star, archive, trash, tags
-- Markdown source and safe preview, `[[Wiki links]]`, graph and backlinks
-- Live search, format buttons, word/character counts, focus mode
-- Automatic browser storage and JSON backup import/export
-- Markdown export per note
-- Optional single-owner Supabase sign-in and multi-device cloud synchronization
-- One-click verified sync with exact last confirmed cloud timestamp
-- Working persistent light/dark theme toggle (desktop and mobile)
-- Installable web manifest; no build step or paid UI packages
+- Real horizontal multi-tab document navigation, click-to-open and close tabs
+- Smooth note and folder operations with right-click desktop context menus and long-press mobile menus
+- Rich text editing directly in the page (bold, italic, underline, heading, lists, checklist, links). No Markdown symbol codes or preview switch
+- Inter-based typography, crisp interactive SVG knowledge graph, backlinks, right sidebar hide/show
+- Desktop layout and mobile near-full-screen editor with compact navigation and formatting dock
+- Dark/light themes; local-first autosaving; JSON backup and HTML note exports
+- Cloudflare Pages Functions + owner-only password + D1 database cloud sync, ~1.45 s typing debounce and 12 s periodic checks
+- No public account registration, no tag UI
 
-## Deploy on GitHub Pages
+## Website
 
-1. Open **Settings → Pages** in this repository.
-2. Set **Build and deployment → Source: GitHub Actions**.
-3. Run **Deploy MX Notes** under **Actions** (or push to `main`).
-4. Open **https://mazenmix.github.io/notes/** after the workflow succeeds.
+**Production site:** https://mxnote.pages.dev/
 
-Alternatively, connect this repository to Cloudflare Pages, choose branch `main`, leave Build command blank and use `/` for the output directory.
+Cloudflare Pages should be linked to `main`, with the repository root as the Pages build output. This site uses the `functions/` directory for authenticated cloud API routes.
 
-## Activate real cloud synchronization
+## IMPORTANT: activate cloud database
 
-**Important:** Publishing the website does not automatically give it a shared cloud database. Without the following setup, your notes save to local browser storage only.
+**Cloud sync is not active until you add your database binding and encrypted secrets in your own Cloudflare dashboard.**
 
-1. Create a Supabase project and enable email/password under **Authentication → Providers**.
-2. Create **one owner account** in **Authentication → Users** from the Supabase dashboard (use **Add user**). Disable **Allow new users to sign up** under Authentication settings to block public registrations.
-3. Open the **Supabase SQL Editor**, paste the contents of [supabase.sql](./supabase.sql), and run it. RLS ensures a signed-in user can only read their own vault.
-4. Visit MX Notes. Click the **cloud icon**. Enter your Supabase Project URL and **publishable or anon key** from Project Settings → API Keys, plus that owner's email/password. **There is deliberately no Create account button on MX Notes.**
-5. Log in on your other devices with the same project details and credentials. Press **Sync now & verify** to confirm the server has returned the stored revision.
-6. Settings displays the *exact last successful confirmation date/time*, live connection status, and pending verification state. An unconfigured or unreachable cloud is **never** presented as successfully synced.
+Follow **[Cloudflare D1 owner setup](cloudflare/README.md)** step by step. You need a D1 database, the provided SQL schema, the `DB` binding, and encrypted `NOTES_PASSWORD` and `SESSION_SECRET`. Redeploy once. Your data stays stored locally until you successfully unlock and verify cloud sync.
 
-Do not put your Supabase **service_role**, secret key, or database password in this public repository or in the web app.
+No Supabase account or keys are used by this version.
 
-Cloud traffic is protected using HTTPS and database rows are isolated with RLS. **This is not end-to-end encryption.** The sync model is a single JSON vault per user, resolved by last-write time, and checks cloud updates on window focus and periodically. Successful cloud writes are read back and checked before being marked confirmed. Avoid simultaneous edits on separate devices to prevent one workspace version overriding another. Keep regular JSON backups.
-
-## Shortcuts
+## Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
-| Ctrl/⌘ + N | New note |
-| Ctrl/⌘ + K | Find notes |
-| Ctrl/⌘ + S | Save and queue cloud sync |
+| Ctrl/⌘ + N | Create a new tab and note |
+| Ctrl/⌘ + K | Search |
+| Ctrl/⌘ + S | Save locally / queue upload |
 | Ctrl/⌘ + Shift + L | Toggle light/dark theme |
-| Esc | Close panels / exit focus |
+| Esc | Close overlay / leave focus mode |
 
-The proprietary iA Writer typeface is not included. Open-licensed IBM Plex Mono provides a comparable writing feel.
+## File map
 
-## Project files
+- `index.html`, `styles.css` — polished responsive UI
+- `app.js` — rich editor, tabs, contextual actions, client sync
+- `functions/api/session.js` — single-owner login and session
+- `functions/api/vault.js` — authenticated D1 read/write with revision checks
+- `functions/_lib/owner.js` — cookie/session auth and throttling helpers
+- `cloudflare/schema.sql` — D1 database schema
+- `cloudflare/README.md` — production activation and verification
+- `_routes.json` — enable Pages Functions for /api/* only
 
-- `index.html` — editor and navigation markup
-- `styles.css` — responsive visual design
-- `app.js` — note and cloud-sync logic
-- `supabase.sql` — user-isolated cloud schema
-- `.github/workflows/pages.yml` — deployment workflow
+No proprietary iA Writer or Obsidian font files are bundled. The font is **Inter** with local system fallbacks.
 
 Made for MazenmiX.
