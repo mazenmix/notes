@@ -34,7 +34,7 @@
     function walk(node){
       if(node.nodeType===3)return esc(node.nodeValue);
       if(node.nodeType!==1)return '';
-      if(node.hasAttribute('data-asset-controls')||node.hasAttribute('data-code-controls'))return '';
+      if(node.hasAttribute('data-asset-controls')||node.hasAttribute('data-code-controls')||node.hasAttribute('data-resize-handle'))return '';
       if(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','FORM','SVG','MATH','TEMPLATE','LINK','META','BUTTON','INPUT'].includes(node.tagName))return '';
       const children=Array.from(node.childNodes).map(walk).join('');
       if(!allowed.has(node.tagName))return children;
@@ -55,6 +55,7 @@
         }
       }
       if(t==='p'&&node.getAttribute('data-checklist')==='1')attrs=' data-checklist="1"';
+      if(t==='div'&&node.getAttribute('data-asset-gallery')==='1')attrs=' data-asset-gallery="1"';
       if(t==='figure'){
         const id=node.getAttribute('data-asset-id');
         if(!/^[a-f0-9-]{36}$/i.test(id||''))return '';
@@ -862,8 +863,15 @@
       if(!figure.querySelector('[data-asset-controls]')){
         const tools=document.createElement('div');tools.dataset.assetControls='true';
         tools.contentEditable='false';
-        tools.innerHTML='<button type="button" data-asset-action="remove" aria-label="Remove attachment" title="Remove attachment">×</button>';
+        tools.innerHTML='<button type="button" data-asset-action="remove" aria-label="Remove attachment" title="Remove image">×</button>';
         figure.append(tools);
+      }
+      if(kind==='image'&&!figure.querySelector('[data-resize-handle]')){
+        const grip=document.createElement('span');
+        grip.dataset.resizeHandle='true';grip.className='asset-resize-grip';
+        grip.contentEditable='false';grip.title='Drag corner to resize image';
+        grip.innerHTML='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 19l9-9M15 19l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+        figure.append(grip);
       }
     }
     for(const code of editor.querySelectorAll('pre[data-code-block]>code')){
@@ -872,7 +880,8 @@
       if(pre&&!pre.querySelector('[data-code-controls]')){
         const tools=document.createElement('div');tools.dataset.codeControls='true';
         tools.contentEditable='false';
-        tools.innerHTML='<button type="button" data-code-action="remove" aria-label="Remove code block" title="Remove code block">×</button>';
+        tools.innerHTML='<button type="button" data-code-action="copy" aria-label="Copy code" title="Copy code"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M16 18v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="copy-feedback">Copy</span></button>'+
+          '<button type="button" data-code-action="remove" aria-label="Remove code block" title="Remove code block"><span aria-hidden="true">×</span></button>';
         pre.append(tools);
       }
     }
