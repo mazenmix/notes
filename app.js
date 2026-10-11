@@ -1708,8 +1708,70 @@
       hidePaintMenu();
     });
   }
+
+  function bindIosNavigation(){
+    const openHandler=e=>{
+      const expand=e.target.closest('[data-ios-expand]');
+      if(expand){
+        const name=expand.dataset.iosExpand;
+        if(iosExpanded.has(name))iosExpanded.delete(name);else iosExpanded.add(name);
+        saveUi();renderIos();return;
+      }
+      const edit=e.target.closest('[data-ios-up],[data-ios-down]');
+      if(edit){
+        const name=edit.dataset.iosUp||edit.dataset.iosDown;
+        const current=folderChildren(folderParent(name));
+        const index=current.indexOf(name),offset=edit.hasAttribute('data-ios-up')?-1:1,target=current[index+offset];
+        if(!target)return;
+        const order=state.folderOrder,first=order.indexOf(name),second=order.indexOf(target);
+        if(first<0||second<0)return;
+        [order[first],order[second]]=[order[second],order[first]];
+        markOrganizationChanged();renderAll();return;
+      }
+      const menu=e.target.closest('[data-ios-menu]');
+      if(menu){
+        const name=menu.dataset.iosMenu,rect=menu.getBoundingClientRect();
+        showMenu(Math.max(8,rect.right-225),rect.bottom+6,folderOptions(name),{folder:name});return;
+      }
+      const open=e.target.closest('[data-ios-open]');
+      if(open)iosGoToFolder(open.dataset.iosOpen);
+    };
+    $('ios-folder-groups').addEventListener('click',openHandler);
+    $('ios-pinned-section').addEventListener('click',openHandler);
+    $('ios-notes-groups').addEventListener('click',e=>{
+      const button=e.target.closest('[data-ios-note]');if(button)openNote(button.dataset.iosNote);
+    });
+    $('ios-add-folder').addEventListener('click',()=>$('new-folder').click());
+    $('ios-settings').addEventListener('click',settingsOpen);
+    $('ios-edit-folders').addEventListener('click',()=>{
+      iosEditMode=!iosEditMode;renderIos();
+    });
+    $('ios-back-folders').addEventListener('click',()=>{iosScreen='folders';iosSearchTerm='';$('ios-search').value='';renderIos();});
+    $('ios-list-more').addEventListener('click',e=>{
+      const folder=iosFolder,rect=e.currentTarget.getBoundingClientRect();
+      const options=(folder==='Inbox'||folder==='all'||folder==='star'||folder==='trash')?[
+        {ico:'plus',label:'New note',action:'new-note'},
+        {ico:'folder',label:'New folder',action:'new-folder'},
+        {divider:true},{ico:'palette',label:'Settings',action:'settings'}
+      ]:folderOptions(folder);
+      showMenu(Math.max(8,rect.right-234),rect.bottom+7,options,{folder});
+    });
+    $('ios-compose').addEventListener('click',()=>{
+      const folder=iosScreen==='list'&&iosFolder!=='all'&&iosFolder!=='star'&&iosFolder!=='trash'&&
+        (iosFolder==='Inbox'||state.folders.includes(iosFolder))?iosFolder:'Inbox';
+      newNote(folder);
+    });
+    $('ios-search').addEventListener('input',e=>{
+      iosSearchTerm=e.target.value;
+      if(iosSearchTerm.trim()){iosFolder='all';iosScreen='list';}
+      else if(iosScreen!=='list'){iosScreen='folders';}
+      renderIos();
+    });
+    window.addEventListener('resize',()=>renderIos(),{passive:true});
+  }
   function init(){
     applyTheme();renderAll();
+    bindIosNavigation();
     bindDelegation();bindRichText();
     $('new-note').addEventListener('click',()=>newNote());
     $('tab-new').addEventListener('click',()=>newNote());
