@@ -635,6 +635,8 @@
   const trashOptions=()=>[{ico:'trash',label:'Empty Trash permanently…',action:'empty-trash',danger:true},{ico:'file',label:'Open Trash',action:'open-trash'}];
   const folderOptions=folder=>[
     {ico:'plus',label:'New note here',action:'folder-new'},
+    {ico:'folder',label:'New subfolder',action:'folder-subfolder'},
+    ...(folderParent(folder)?[{ico:'folder',label:'Move folder to top level',action:'folder-to-root'}]:[]),
     {ico:'edit',label:'Rename folder',action:'folder-rename'},
     {ico:'folder',label:'Open folder',action:'folder-open'},
     {divider:true},
@@ -924,7 +926,15 @@
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||['inbox','notes'].includes(newName.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===newName.toLocaleLowerCase())){showToast('Choose a unique folder name');return;}
-    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
+    state.folders=state.folders.map(f=>f===old?newName:f);pinnedFolders=pinnedFolders.map(f=>f===old?newName:f);
+    state.folderOrder=state.folderOrder.map(f=>f===old?newName:f);
+    const oldParents=state.folderParents||{},nextParents={};
+    for(const [key,value] of Object.entries(oldParents))nextParents[key===old?newName:key]=value===old?newName:value;
+    state.folderParents=nextParents;
+    const orders={...state.noteOrder};
+    if(Object.hasOwn(orders,old)){orders[newName]=orders[old];delete orders[old];}
+    state.noteOrder=orders;
+    if(collapsedPinnedFolders.delete(old))collapsedPinnedFolders.add(newName);
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
     tabs=tabs.map(id=>id===folderKey(old)?folderKey(newName):id);
@@ -932,12 +942,20 @@
     if(lastClosedTab===folderKey(old))lastClosedTab=folderKey(newName);
     if(collapsedGroups.delete(old))collapsedGroups.add(newName);
     if(showAllGroups.delete(old))showAllGroups.add(newName);
-    persist();saveUi();renderAll();showToast('Folder renamed');
+    markOrganizationChanged();saveUi();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
-    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    state.folders=state.folders.filter(f=>f!==folder);pinnedFolders=pinnedFolders.filter(f=>f!==folder);
+    state.folderOrder=state.folderOrder.filter(f=>f!==folder);
+    const parents={...state.folderParents};
+    for(const [child,parent] of Object.entries(parents))if(parent===folder)delete parents[child];
+    delete parents[folder];state.folderParents=parents;
+    const ordered={...state.noteOrder};delete ordered[folder];state.noteOrder=ordered;
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
-    if(filter==='folder:'+folder)filter='inbox';tabs=tabs.filter(id=>id!==folderKey(folder));if(activeTab===folderKey(folder))activeTab=selected;persist();saveUi();renderAll();showToast('Notes moved to Notes');
+    if(filter==='folder:'+folder)filter='inbox';
+    tabs=tabs.filter(id=>id!==folderKey(folder));
+    if(activeTab===folderKey(folder))activeTab=selected;
+    markOrganizationChanged();saveUi();renderAll();showToast('Notes moved to Notes; subfolders retained');
   }
   async function runAction(action,context) {
     const n=findNote(context?.id)||current(), folder=context?.folder;
@@ -975,7 +993,7 @@
       case 'rename-note':if(n){openNote(n.id);focusNoteHeading(true);}break;
       case 'star-note':if(n){n.starred=!n.starred;touchNote(n);showToast(n.starred?'Added to favorites':'Removed from favorites');}break;
       case 'duplicate-note':if(n){const copy={...n,id:uuid(),title:n.title+' copy',updatedAt:stamp(),deleted:false};state.notes.push(copy);persist();openNote(copy.id);showToast('Note duplicated');}break;
-      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}n.folder=f;touchNote(n);renderEditor();}break;
+      case 'move-note':if(n){const name=await ask('Move note','Folder: '+['Notes',...state.folders].join(' · '),folderLabel(n.folder));if(name===null)return;const chosen=name.trim(),f=['notes','inbox'].includes(chosen.toLocaleLowerCase())?'Inbox':state.folders.find(x=>x.toLocaleLowerCase()===chosen.toLocaleLowerCase());if(!f){showToast('Choose an existing folder');return;}if(moveNote(n.id,f))showToast('Note moved');}break;
       case 'copy-note-link':if(n){await navigator.clipboard.writeText('[['+n.title+']]');showToast('Note link copied');}break;
       case 'archive-note':if(n){n.archived=!n.archived;touchNote(n);showToast(n.archived?'Archived':'Restored from archive');}break;
       case 'restore-note':if(n){n.deleted=false;n.archived=false;touchNote(n);showToast('Note restored');}break;
@@ -992,12 +1010,27 @@
       }break;
       case 'export-note':if(n)exportNote(n);break;
       case 'folder-new':newNote(folder);break;
+      case 'folder-subfolder':{
+        const name=await ask('New subfolder','Folder name inside '+folder);
+        if(!name?.trim())break;
+        const value=name.trim().slice(0,90);
+        if(['notes','inbox'].includes(value.toLocaleLowerCase())||state.folders.some(f=>f.toLocaleLowerCase()===value.toLocaleLowerCase())){
+          showToast('Choose a unique folder name');break;
+        }
+        state.folders.push(value);
+        state.folderParents={...state.folderParents,[value]:folder};
+        state.folderOrder=[...state.folderOrder,value];
+        pinnedFolders.push(value);collapsedPinnedFolders.delete(folder);
+        if(!pinnedFolders.includes(folder))pinnedFolders.push(folder);
+        markOrganizationChanged();saveUi();renderSidebar();showToast('Subfolder created');
+      }break;
+      case 'folder-to-root':if(folderParent(folder)&&moveFolder(folder,'Inbox','inside'))showToast('Moved to top level');break;
       case 'folder-open':selectFolder(folder);break;
       case 'folder-rename':{
         const name=await ask('Rename folder','New folder name',folder);
         if(name!==null)folderRename(folder,name.trim());
       }break;
-      case 'folder-delete':if(await confirmAction('Delete folder?','Notes in this folder will move to Inbox.'))removeFolder(folder);break;
+      case 'folder-delete':if(await confirmAction('Delete folder?','Notes in this folder will move to Notes. Nested subfolders will remain at the top level.'))removeFolder(folder);break;
       case 'focus':toggleFocus();break;
       case 'edit-copy':case 'edit-cut':case 'edit-paste':case 'edit-replace':case 'edit-select-all':case 'edit-bold':case 'edit-italic':case 'translate-ar':case 'translate-en':case 'spellcheck-help':case 'find-note':await runEditAction(action,context);break;
       case 'sync':await syncNow();break;
@@ -1544,7 +1577,7 @@
         else showToast('Folder already pinned');
         openFolder(existing);return;
       }
-      state.folders.push(f);state.foldersUpdatedAt=stamp();pinnedFolders.push(f);persist();saveUi();selectFolder(f);
+      state.folders.push(f);state.folderOrder=[...state.folderOrder,f];pinnedFolders.push(f);markOrganizationChanged();saveUi();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
     $('open-sidebar').addEventListener('click',()=>openSidebar());
