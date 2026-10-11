@@ -47,3 +47,39 @@ Cloudflare's **Pages Functions** are picked up from the root-level `functions/` 
 Do not expose `NOTES_PASSWORD` or `SESSION_SECRET` in browser code, GitHub, chat screenshots, or ordinary public environment variables. Use Cloudflare's encrypted secret type. Only the short password entry travels to the site's same-origin HTTPS login API.
 
 © MazenmiX
+
+
+## Private attachments (new)
+
+MX Note can attach **images, PDFs, and general files** (up to **15 MB each**).
+Attachments are stored as private objects in Cloudflare **R2**, not embedded in
+the D1 text workspace. The note stores only an opaque attachment ID, display
+filename, MIME type, and image display width.
+
+1. Cloudflare dashboard → **R2 Object Storage** → **Create bucket**.
+   Example bucket name: `mxnotes-attachments`. Leave public access **off**.
+2. Workers & Pages → **mxnote** → **Settings → Bindings → Add**.
+   Choose **R2 bucket**, binding variable `ATTACHMENTS`, and select
+   `mxnotes-attachments` in **Production** (and Preview if needed).
+3. Save, then **redeploy** the latest `main` Production deployment.
+4. Unlock the cloud vault at `https://mxnote.pages.dev`, attach a small image
+   or PDF, then refresh and verify it opens from a second authenticated device.
+
+The attachment endpoint is `/api/attachment` and requires the existing signed
+owner session, so there are **no publicly accessible object URLs**. Upload and
+delete operations require a matching same-origin request. Unsupported/missing
+R2 binding returns HTTP 503, so the app will not pretend an upload succeeded.
+Exporting a workspace backup includes attachment references **only**, not R2
+binary content. Keep your bucket and vault together for disaster recovery.
+
+### Rich editor
+- Paperclip → upload one or more files; tap **Open** to view/download.
+- Image figure → **−**/**+** buttons resize it (the chosen width is saved).
+- Table icon → choose rows and columns; right-click or long-press a cell to add
+  or delete rows/columns and change column width or row height.
+- Code icon → choose a language, paste/edit code. The local syntax tokenizer
+  colors strings, numbers, comments and language keywords on exit.
+
+Normal note/folder deletion now moves content to the recoverable Trash without
+asking. **Empty Trash** is the only deletion action requiring confirmation.
+Folders retain their original note locations until permanent deletion.
