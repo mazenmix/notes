@@ -933,10 +933,20 @@
       before=node.childNodes[range.startOffset-1];
       if(before?.nodeType===3)before=before.previousSibling;
     }
+    if(before?.nodeType===1&&before.matches?.('p')&&!before.textContent.trim()){
+      before=before.previousElementSibling;
+    }
     const block=element.closest?.('p,div,figure');
     if(!before&&block&&block!==editor){
-      // Only join a gallery next to a blank insertion paragraph.
+      // A blank paragraph directly after a gallery means "add beside".
       if(!block.textContent.trim())before=block.previousElementSibling;
+    }
+    // When selection ends exactly at a gallery boundary, the browser may
+    // place the caret in the editor root just after its empty trailing <p>.
+    if(!before&&element===editor&&range.startOffset>0){
+      const neighbor=editor.childNodes[range.startOffset-1];
+      before=neighbor?.nodeType===1&&neighbor.matches?.('p')&&!neighbor.textContent.trim()?
+        neighbor.previousElementSibling:neighbor;
     }
     if(before?.nodeType===1&&before.matches?.('[data-asset-gallery="1"]'))return before;
     if(before?.nodeType===1&&before.matches?.('figure[data-kind="image"]')){
