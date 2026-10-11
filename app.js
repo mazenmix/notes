@@ -9,7 +9,7 @@
   const STORE='mxnotes.workspace.v1',VIEW='mxnotes.ui.v3',THEME='mxnotes.appearance.theme',VERIFIED='mxnotes.d1.lastVerified';
   const SWAP_DELAY=1450;
   const seeded=()=>({
-    version:3,updatedAt:'2025-01-01T00:00:00.000Z',
+    version:3,updatedAt:'2025-01-01T00:00:00.000Z',foldersUpdatedAt:'2025-01-01T00:00:00.000Z',
     folders:['Personal','Work','Ideas','Writing','Design','Reading','Life'],
     notes:[
       {id:'welcome',title:'A calmer mind',folder:'Life',html:'<h2>Thoughts on a simpler life</h2><p>Lately I’ve been thinking a lot about how much calmer life feels when things are simple. Not easier, but simpler. Fewer tabs, fewer commitments, fewer things fighting for my attention.</p><p>It’s not about doing less, but about making space for what actually matters.</p><ul><li>More time for deep work</li><li>A cleaner headspace</li><li>People who feel like home</li><li>A life that feels intentional</li></ul><blockquote>Simplicity is not the absence of things, but the presence of what matters.</blockquote><h2>Related</h2><p>Keep the ideas connected: <a data-note-id="habits">Habits</a> · <a data-note-id="focus">Focus</a> · <a data-note-id="morning">A better morning</a></p>',updatedAt:'2025-01-01T00:00:00.000Z'},
@@ -68,7 +68,7 @@
     if(!x||!Array.isArray(x.notes))throw Error('Invalid backup');
     const lookup={};
     for(const n of x.notes){if(n?.title && typeof n.id==='string')lookup[String(n.title).trim().toLocaleLowerCase()]=n.id;}
-    return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),
+    return {version:3,updatedAt:typeof x.updatedAt==='string'?x.updatedAt:stamp(),foldersUpdatedAt:typeof x.foldersUpdatedAt==='string'?x.foldersUpdatedAt:(x.updatedAt||stamp()),
       folders:[...new Set((Array.isArray(x.folders)?x.folders:[]).filter(v=>typeof v==='string'&&v.length<100))],
       notes:x.notes.filter(n=>n&&typeof n.id==='string').slice(0,15000).map(n=>({
         id:n.id,title:String(n.title||'Untitled').slice(0,400),
@@ -392,13 +392,13 @@
   function setFilter(next){filter=next;search='';$('search').value='';renderSidebar();closePanels();}
   function folderRename(old,newName){
     if(!newName||newName==='Inbox'||state.folders.includes(newName)){showToast('Choose a unique folder name');return;}
-    state.folders=state.folders.map(f=>f===old?newName:f);
+    state.folders=state.folders.map(f=>f===old?newName:f);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===old){n.folder=newName;n.updatedAt=stamp();}});
     if(filter==='folder:'+old)filter='folder:'+newName;
     persist();renderAll();showToast('Folder renamed');
   }
   function removeFolder(folder){
-    state.folders=state.folders.filter(f=>f!==folder);
+    state.folders=state.folders.filter(f=>f!==folder);state.foldersUpdatedAt=stamp();
     state.notes.forEach(n=>{if(n.folder===folder){n.folder='Inbox';n.updatedAt=stamp();}});
     if(filter==='folder:'+folder)filter='inbox';persist();renderAll();showToast('Notes moved to Inbox');
   }
@@ -523,8 +523,9 @@
       const found=merged.get(n.id);
       if(!found || Date.parse(n.updatedAt)>=Date.parse(found.updatedAt))merged.set(n.id,n);
     }
-    const folders=[...new Set([...r.folders,...local.folders])];
-    return {version:3,notes:[...merged.values()],folders,updatedAt:
+    const folders=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt)?local.folders:r.folders;
+    const foldersUpdatedAt=Date.parse(local.foldersUpdatedAt)>=Date.parse(r.foldersUpdatedAt)?local.foldersUpdatedAt:r.foldersUpdatedAt;
+    return {version:3,notes:[...merged.values()],folders,foldersUpdatedAt,updatedAt:
       Date.parse(local.updatedAt)>Date.parse(r.updatedAt)?local.updatedAt:r.updatedAt};
   }
   function scheduleSync(){
@@ -708,7 +709,7 @@
       if(!name?.trim())return;
       const f=name.trim().slice(0,90);
       if(f==='Inbox'||state.folders.includes(f)){showToast('That folder already exists');return;}
-      state.folders.push(f);persist();selectFolder(f);
+      state.folders.push(f);state.foldersUpdatedAt=stamp();persist();selectFolder(f);
     });
     $('search').addEventListener('input',e=>{search=e.target.value;renderSidebar();});
     $('note-title').addEventListener('input',onTitleInput);
