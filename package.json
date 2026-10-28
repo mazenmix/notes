@@ -1,0 +1,16 @@
+{
+  "name": "mx-note",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/secure-build.mjs .",
+    "preview:secure": "npm run build && wrangler pages dev dist",
+    "check": "node --check app.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "javascript-obfuscator": "^4.1.1",
+    "wrangler": "^4.143.0"
+  }
+}
