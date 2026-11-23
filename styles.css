@@ -1063,10 +1063,10 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .ios-folders-scroll h2,.ios-pinned-section h2{margin:6px 0 14px;font-size:21px;
     letter-spacing:-.35px;font-weight:700}
   .ios-folder-group{background:var(--ios-card);border-radius:25px;
-    overflow:hidden;padding:0 16px}
+    overflow:hidden;padding:0}
   .ios-folder-entry{min-width:0}
   .ios-folder-line{display:flex;align-items:center;min-height:66px;gap:0;
-    padding-left:calc(var(--ios-indent,0)*17px);position:relative}
+    position:relative}
   .ios-folder-line:after{content:"";position:absolute;bottom:0;left:46px;right:0;
     height:1px;background:var(--ios-divider)}
   .ios-folder-entry:last-child>.ios-folder-line:after{display:none}
@@ -1087,7 +1087,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .ios-folder-tools{display:flex;align-items:center;flex-shrink:0;gap:1px}
   .ios-folder-tools button{height:33px;min-width:27px;border-radius:7px;background:var(--ios-control);
     color:var(--ios-ink);border:0;font-size:16px}
-  .ios-subfolders{padding-left:13px;margin:0 0 3px 14px;border-left:1px solid var(--ios-divider)}
+  .ios-subfolders{margin:0;padding:0}
   .ios-pinned-section{margin-top:26px}
   .ios-list-top{display:flex;align-items:center;justify-content:space-between;
     padding:calc(env(safe-area-inset-top,0px) + 20px) 20px 0;flex:none}
@@ -1102,7 +1102,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .ios-date-section{margin:0 0 37px}
   .ios-date-section>h2{font-size:21px;margin:0 0 16px;letter-spacing:-.4px;
     font-weight:720}
-  .ios-note-card{background:var(--ios-card);padding:0 16px;
+  .ios-note-card{background:var(--ios-card);padding:0;
     border-radius:24px;overflow:hidden}
   .ios-note-row{width:100%;text-align:left;display:flex;flex-direction:column;
     padding:14px 0 14px;min-height:79px;gap:5px;border:0;
@@ -1115,7 +1115,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .ios-note-details time{flex:none;white-space:nowrap}
   .ios-note-details span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ios-empty-list{font-size:15px;color:var(--ios-subtle);padding:22px 4px}
-  .ios-note-row:active,.ios-folder-open:active{opacity:.6}
+  .ios-note-row:active,.ios-folder-open:active{opacity:1}
   body[data-ios-layout="true"] .ios-bottom-dock:not([hidden]){
     position:fixed;z-index:17;left:20px;right:20px;
     bottom:calc(18px + env(safe-area-inset-bottom,0px));
@@ -1156,7 +1156,9 @@ body.folder-tab-active .editor-footer{visibility:hidden}
 }
 @media(min-width:761px) and (max-width:1100px), (any-pointer:coarse) and (min-width:1101px) and (max-width:1500px){
   body[data-ios-layout="true"] .app-shell{
-    display:grid!important;grid-template-columns:minmax(300px,36%) minmax(0,1fr);
+    --folder-pane-width:clamp(252px,29vw,320px);
+    transition:none;
+    display:grid!important;grid-template-columns:var(--folder-pane-width) minmax(0,1fr);
     grid-template-rows:minmax(0,1fr)
   }
   body[data-ios-layout="true"] .ios-folders-screen{
@@ -1178,7 +1180,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   body[data-ios-layout="true"] .ios-folder-count{font-size:15px}
   body[data-ios-layout="true"] .ios-notes-scroll{padding-inline:28px}
   body[data-ios-layout="true"] .ios-bottom-dock:not([hidden]){
-    left:18px;right:auto;width:calc(36% - 36px)
+    left:18px;right:auto;width:calc(var(--folder-pane-width) - 36px)
   }
   body[data-ios-layout="true"] .editor-content{padding:36px 31px 0;width:100%}
   body[data-ios-layout="true"] .editor-pane .mobile-menu{display:grid}
@@ -1189,7 +1191,9 @@ body.folder-tab-active .editor-footer{visibility:hidden}
 
 /* Active folder selection and iPad editing chrome */
 @media(max-width:1100px), (any-pointer:coarse) and (max-width:1500px){
-  .ios-folder-line.ios-current{border-radius:12px;background:color-mix(in srgb,var(--ios-yellow) 8%,transparent)}
+  .ios-folder-line.ios-current,.ios-folder-line:has(>button:active),.ios-note-row:active{
+    background:color-mix(in srgb,var(--ios-yellow) 18%,var(--ios-card))
+  }
   .ios-folder-line.ios-current .ios-folder-name{font-weight:700}
   .ios-folder-line.ios-current:after{opacity:.25}
   .ios-folder-open:focus-visible,.ios-note-row:focus-visible,
@@ -1871,10 +1875,20 @@ body[data-ios-layout="true"] :is(.ios-folders-screen,.ios-notes-screen,.mobile-n
   .ios-folder-line,.ios-folder-open { min-height:48px; }
   .ios-folder-open { gap:11px; }
   .ios-folder-open>svg { width:23px; height:23px; stroke-width:1.85; }
-  .ios-folder-line:after { left:34px; }
+  .ios-folder-line:after { left:calc(50px + var(--ios-indent,0)*14px); pointer-events:none; }
+  .ios-folder-open { align-self:stretch; padding-inline:calc(16px + var(--ios-indent,0)*14px) 16px; }
+  .ios-folder-open:has(~button),.ios-folder-open:has(~.ios-folder-tools) { padding-inline-end:4px; }
+  .ios-folder-tools { align-self:stretch; }
+  .ios-folder-tools button { min-width:32px; align-self:stretch; height:auto; }
+  .ios-note-row { position:relative; border-bottom:0; }
+  .ios-note-row:not(:last-child)::after { content:""; position:absolute; inset:auto 0 0 16px; height:1px; background:var(--ios-divider); pointer-events:none; }
+  .ios-folder-line:has(>.ios-folder-open:focus-visible),.ios-note-row:focus-visible { outline:2px solid var(--ios-yellow); outline-offset:-2px; }
+  @media(hover:hover) {
+    .ios-folder-line:not(.ios-current):hover,.ios-note-row:hover { background:color-mix(in srgb,var(--ios-ink) 7%,var(--ios-card)); }
+  }
   .ios-folder-name { font-weight:450; }
   .ios-round-action,.ios-expand,.ios-pill-action,.ios-back-button { min-width:44px; min-height:44px; }
-  .ios-note-row { min-height:64px; padding:10px 0; gap:3px; text-align:start; }
+  .ios-note-row { min-height:64px; padding:10px 16px; gap:3px; text-align:start; }
   .ios-note-row strong { font-size:1.0625rem; font-weight:600; }
   .ios-note-details { font-size:.9375rem; }
   #ios-list-count { margin-bottom:16px; font-size:.9375rem; }

@@ -255,6 +255,14 @@
     for(const block of d.querySelectorAll('br,p,div,h1,h2,h3,li,blockquote,pre,td,th'))block.after('\n');
     return d.textContent.trim();
   };
+  const textCache=new WeakMap();
+  function noteText(note){
+    const previous=textCache.get(note);
+    if(previous&&previous.html===note.html)return previous.text;
+    const text=plain(note.html||'');
+    textCache.set(note,{html:note.html,text});
+    return text;
+  }
   const linkIds=n=>n?[...new Set(Array.from((()=>{const div=document.createElement('div');div.innerHTML=safeHtml(n.html);return div;})().querySelectorAll('a[data-note-id]')).map(a=>a.dataset.noteId).filter(id=>findNote(id)&&!findNote(id).deleted))]:[];
   const backlinks=n=>n?visible().filter(other=>other.id!==n.id&&linkIds(other).includes(n.id)):[];
   function saveUi(){localStorage.setItem(VIEW,JSON.stringify({tabs,selected,activeTab,notesCollapsed,collapsedGroups:[...collapsedGroups],expandedNotes:[...expandedNotes],showAllGroups:[...showAllGroups],pinnedFolders,collapsedPinnedFolders:[...collapsedPinnedFolders],iosExpanded:[...iosExpanded],desktopFolder,lastClosedTab}));}
@@ -270,7 +278,22 @@
     const el=$('toast');el.textContent=message;el.classList.add('show');
     clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
   }
+  const webFontFamilies={
+    obsidian:'Inter:wght@400;500;600;700',
+    mono:'IBM+Plex+Mono:wght@400;500;600',
+    cairo:'Cairo:wght@400;500;600;700',
+    naskh:'Noto+Naskh+Arabic:wght@400;500;600'
+  };
+  function loadWritingFont(font){
+    const family=webFontFamilies[font];
+    if(!family||document.getElementById('font-'+font))return;
+    const link=document.createElement('link');
+    link.id='font-'+font;link.rel='stylesheet';
+    link.href='https://fonts.googleapis.com/css2?family='+family+'&display=swap';
+    document.head.append(link);
+  }
   function applyTheme(){
+    loadWritingFont(writingFont);
     document.documentElement.dataset.theme=theme;
     $('theme-toggle').innerHTML=icon(['light','sepia'].includes(theme)?'moon':'sun');
     const lightTheme=['light','sepia'].includes(theme);
@@ -428,7 +451,7 @@
     let notes=filter==='trash'?state.notes.filter(n=>n.deleted&&!n.purged):filter==='star'?live.filter(n=>n.starred):live;
     if(search.trim()){
       const q=search.toLocaleLowerCase();
-      notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(q));
+      notes=state.notes.filter(n=>!n.deleted&&!n.purged&&(n.title+' '+noteText(n)).toLocaleLowerCase().includes(q));
     }
     $('notes-total').textContent=notes.length;
     $('toggle-notes-list').setAttribute('aria-expanded',String(!notesCollapsed));
@@ -469,7 +492,7 @@
     }
     if(desktopSearch.trim()){
       const query=desktopSearch.trim().toLocaleLowerCase();
-      notes=notes.filter(n=>(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(query));
+      notes=notes.filter(n=>(n.title+' '+noteText(n)).toLocaleLowerCase().includes(query));
     }
     return [...notes].sort((a,b)=>Date.parse(b.updatedAt||0)-Date.parse(a.updatedAt||0));
   }
@@ -500,25 +523,17 @@
       saveUi();renderAll();
     }
   }
-  function iosFolderCount(folder){
-    const list=visible();
-    if(folder==='all')return list.length;
-    if(folder==='star')return list.filter(n=>n.starred).length;
-    if(folder==='trash')return state.notes.filter(n=>n.deleted&&!n.purged).length;
-    if(folder==='Inbox')return list.filter(n=>n.folder==='Inbox').length;
-    return list.filter(n=>n.folder===folder).length;
-  }
-  function iosFolderRow(name,depth=0,seen=new Set()){
+  function iosFolderRow(name,counts,depth=0,seen=new Set()){
     if(seen.has(name)||depth>11)return '';
     const visited=new Set(seen);visited.add(name);
     const children=folderChildren(name);
     const expanded=iosExpanded.has(name);
     const label=folderLabel(name);
-    const childMarkup=children.length&&expanded?'<div class="ios-subfolders">'+children.map(c=>iosFolderRow(c,depth+1,visited)).join('')+'</div>':'';
+    const childMarkup=children.length&&expanded?'<div class="ios-subfolders">'+children.map(c=>iosFolderRow(c,counts,depth+1,visited)).join('')+'</div>':'';
     return '<div class="ios-folder-entry" data-ios-tree="'+esc(name)+'">'+
-      '<div class="ios-folder-line '+(iosFolder===name&&iosScreen==='list'?'ios-current':'')+'" style="--ios-indent:'+depth+'">'+
+      '<div class="ios-folder-line '+(iosFolder===name&&iosScreen!=='folders'?'ios-current':'')+'" style="--ios-indent:'+depth+'">'+
         '<button type="button" class="ios-folder-open" data-ios-open="'+esc(name)+'" aria-label="Open '+esc(label)+'">'+icon('folder')+
-          '<span class="ios-folder-name" dir="auto">'+esc(label)+'</span><span class="ios-folder-count">'+iosFolderCount(name)+'</span>'+
+          '<span class="ios-folder-name" dir="auto">'+esc(label)+'</span><span class="ios-folder-count">'+(counts.get(name)||0)+'</span>'+
           '<span class="ios-arrow">'+icon('chevron')+'</span></button>'+
         (children.length?'<button type="button" class="ios-expand '+(expanded?'is-expanded':'')+'" data-ios-expand="'+esc(name)+'" aria-label="'+(expanded?'Collapse ':'Expand ')+esc(label)+'" aria-expanded="'+expanded+'">'+icon('chevron')+'</button>':'')+
         (iosEditMode&&name!=='Inbox'?'<div class="ios-folder-tools">'+
@@ -533,21 +548,49 @@
       folder==='trash'?notes:notes.filter(n=>n.folder===folder);
     if(iosSearchTerm.trim()){
       const query=iosSearchTerm.trim().toLocaleLowerCase();
-      result=result.filter(n=>(n.title+' '+plain(n.html)).toLocaleLowerCase().includes(query));
+      result=result.filter(n=>(n.title+' '+noteText(n)).toLocaleLowerCase().includes(query));
     }
     return [...result].sort((a,b)=>Date.parse(b.updatedAt||0)-Date.parse(a.updatedAt||0));
   }
   function iosNotePreview(n){
-    const content=plain(n.html||'').replace(/\s+/gu,' ').trim();
+    const content=noteText(n).replace(/\s+/gu,' ').trim();
     let preview=content;
     if(n.title&&preview.toLocaleLowerCase().startsWith(n.title.toLocaleLowerCase()))
       preview=preview.slice(n.title.length).trim();
     return preview.slice(0,120)||'No additional text';
   }
+  const noteDateFormat=new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric'});
   function iosDateGroup(n){
     const dayNumber=date=>Date.UTC(date.getFullYear(),date.getMonth(),date.getDate())/86400000;
     const days=dayNumber(new Date())-dayNumber(new Date(n.updatedAt));
     return days<=0?'Today':days===1?'Yesterday':days<=7?'Previous 7 Days':days<=30?'Previous 30 Days':'Older';
+  }
+  function renderIosFolders(){
+    const live=visible(),counts=new Map();
+    let starred=0;
+    for(const note of live){
+      counts.set(note.folder,(counts.get(note.folder)||0)+1);
+      if(note.starred)starred++;
+    }
+    const trashed=state.notes.filter(note=>note.deleted&&!note.purged).length;
+    $('ios-edit-folders').textContent=iosEditMode?'Done':'Edit';
+    $('ios-edit-folders').setAttribute('aria-pressed',String(iosEditMode));
+    const rootOpen='<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder==='all'&&iosScreen!=='folders'?'ios-current':'')+'">'+
+      '<button type="button" class="ios-folder-open" data-ios-open="all">'+icon('folder')+
+      '<span class="ios-folder-name">All Notes</span><span class="ios-folder-count">'+live.length+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>';
+    const inbox='<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder==='Inbox'&&iosScreen!=='folders'?'ios-current':'')+'">'+
+      '<button type="button" class="ios-folder-open" data-ios-open="Inbox">'+icon('folder')+
+      '<span class="ios-folder-name">Notes</span><span class="ios-folder-count">'+(counts.get('Inbox')||0)+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>';
+    const roots=folderChildren(null);
+    const shortcuts=[['star','star','Favorites'],['trash','trash','Recently Deleted']].map(([key,symbol,label])=>
+      '<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder===key&&iosScreen!=='folders'?'ios-current':'')+'">'+
+      '<button type="button" class="ios-folder-open" data-ios-open="'+key+'">'+icon(symbol)+
+      '<span class="ios-folder-name">'+label+'</span><span class="ios-folder-count">'+(key==='star'?starred:trashed)+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>');
+    $('ios-folder-groups').innerHTML=rootOpen+inbox+shortcuts[0]+roots.map(name=>iosFolderRow(name,counts)).join('')+shortcuts[1];
+    const pinned=pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f));
+    $('ios-pinned-section').hidden=!pinned.length;
+    $('ios-pinned-section').innerHTML=pinned.length?
+      '<h2>Pinned Folders</h2><div class="ios-folder-group">'+pinned.map(name=>iosFolderRow(name,counts)).join('')+'</div>':'';
   }
   function renderIos(){
     const active=isIosLayout();
@@ -557,24 +600,8 @@
     $('ios-notes-screen').hidden=!active||(iosScreen==='editor')||(window.innerWidth<761&&iosScreen!=='list');
     $('ios-bottom-dock').hidden=!active||iosScreen==='editor';
     if(!active)return;
-    $('ios-edit-folders').textContent=iosEditMode?'Done':'Edit';
-    $('ios-edit-folders').setAttribute('aria-pressed',String(iosEditMode));
-    const rootOpen='<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder==='all'&&iosScreen==='list'?'ios-current':'')+'">'+
-      '<button type="button" class="ios-folder-open" data-ios-open="all">'+icon('folder')+
-      '<span class="ios-folder-name">All Notes</span><span class="ios-folder-count">'+iosFolderCount('all')+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>';
-    const inbox='<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder==='Inbox'&&iosScreen==='list'?'ios-current':'')+'">'+
-      '<button type="button" class="ios-folder-open" data-ios-open="Inbox">'+icon('folder')+
-      '<span class="ios-folder-name">Notes</span><span class="ios-folder-count">'+iosFolderCount('Inbox')+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>';
-    const roots=folderChildren(null);
-    const shortcuts=[['star','star','Favorites'],['trash','trash','Recently Deleted']].map(([key,symbol,label])=>
-      '<div class="ios-folder-entry"><div class="ios-folder-line '+(iosFolder===key&&iosScreen==='list'?'ios-current':'')+'">'+
-      '<button type="button" class="ios-folder-open" data-ios-open="'+key+'">'+icon(symbol)+
-      '<span class="ios-folder-name">'+label+'</span><span class="ios-folder-count">'+iosFolderCount(key)+'</span><span class="ios-arrow">'+icon('chevron')+'</span></button></div></div>');
-    $('ios-folder-groups').innerHTML=rootOpen+inbox+shortcuts[0]+roots.map(name=>iosFolderRow(name)).join('')+shortcuts[1];
-    const pinned=pinnedFolders.filter(f=>state.folders.includes(f)&&!folderTrashed(f));
-    $('ios-pinned-section').hidden=!pinned.length;
-    $('ios-pinned-section').innerHTML=pinned.length?
-      '<h2>Pinned Folders</h2><div class="ios-folder-group">'+pinned.map(name=>iosFolderRow(name)).join('')+'</div>':'';
+    if(!$('ios-folders-screen').hidden)renderIosFolders();
+    if($('ios-notes-screen').hidden)return;
     const folder=iosFolder,notes=iosNotesFor(folder);
     const title=folder==='all'?'All Notes':folder==='star'?'Starred':folder==='trash'?'Trash':folderLabel(folder);
     $('ios-list-title').textContent=iosSearchTerm?'Search':title;
@@ -586,7 +613,7 @@
     }
     const dateLabel=date=>{
       const d=new Date(date||Date.now());
-      return Number.isNaN(d.getTime())?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      return Number.isNaN(d.getTime())?'':noteDateFormat.format(d);
     };
     const trashFolders=folder==='trash'?state.folders.filter(f=>state.folderTrash?.[f]?.deleted&&!state.folderTrash?.[f]?.purged):[];
     $('ios-notes-groups').innerHTML=(trashFolders.length?'<div class="ios-note-card">'+trashFolders.map(f=>
@@ -609,7 +636,7 @@
   }
   function updateSummary(){
     const n=current();if(!n){$('word-count').textContent='0 words';$('character-count').textContent='0 characters';return;}
-    const text=plain(n.html).trim(),words=text?text.split(/\s+/u).length:0;
+    const text=noteText(n).trim(),words=text?text.split(/\s+/u).length:0;
     $('word-count').textContent=words.toLocaleString()+' words';
     $('character-count').textContent=text.length.toLocaleString()+' characters';
   }
@@ -617,7 +644,7 @@
     const all=sortFolderNotes(visible().filter(n=>n.folder===folder),folder);
     const titled=all.filter(n=>n.title.trim().toLocaleLowerCase()!=='untitled');
     const drafts=all.filter(n=>n.title.trim().toLocaleLowerCase()==='untitled');
-    const card=n=>'<button class="folder-note-card" data-folder-note="'+esc(n.id)+'"><span class="folder-card-icon">'+icon('file')+'</span><span class="folder-card-detail"><strong dir="auto">'+esc(n.title)+'</strong><small dir="auto">'+esc(plain(n.html).trim().slice(0,100)||'Empty note')+'</small></span><time>'+esc(timeAgo(n.updatedAt))+'</time></button>';
+    const card=n=>'<button class="folder-note-card" data-folder-note="'+esc(n.id)+'"><span class="folder-card-icon">'+icon('file')+'</span><span class="folder-card-detail"><strong dir="auto">'+esc(n.title)+'</strong><small dir="auto">'+esc(noteText(n).trim().slice(0,100)||'Empty note')+'</small></span><time>'+esc(timeAgo(n.updatedAt))+'</time></button>';
     $('folder-view').innerHTML='<div class="folder-view-head"><div class="editor-eyebrow">FOLDER · '+all.length+' NOTES</div><h1 dir="auto">'+esc(folderLabel(folder))+'</h1><button class="folder-create" data-new-in-folder="'+esc(folder)+'">'+icon('plus')+' New note</button></div>'+
       (titled.length?'<div class="folder-view-list">'+titled.map(card).join('')+'</div>':'')+
       (drafts.length?'<details class="folder-drafts"><summary>'+icon('chevron')+' Untitled drafts <span>'+drafts.length+'</span></summary><div class="folder-view-list">'+drafts.map(card).join('')+'</div></details>':'')+
