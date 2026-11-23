@@ -1209,7 +1209,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
 
 /* MX Note Desktop — three-pane iCloud Notes-inspired organization */
 .desktop-notes-panel{display:none;min-width:0;min-height:0}
-@media(min-width:1101px){
+@media (width > 1100px) and (not (any-pointer:coarse)), (width > 1500px){
   .app-shell,body.panel-hidden .app-shell{
     grid-template-columns:224px 284px minmax(0,1fr)!important;
     grid-template-rows:minmax(0,1fr);
@@ -1305,7 +1305,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   .ios-folders-screen,.ios-notes-screen,.ios-bottom-dock{display:none!important}
 }
 /* Coordinated color themes for the desktop three-pane view */
-@media(min-width:1101px){
+@media (width > 1100px) and (not (any-pointer:coarse)), (width > 1500px){
   :root[data-theme="light"] .sidebar,:root[data-theme="light"] .sidebar-foot{background:#ecf0f3;border-color:#d2dce3}
   :root[data-theme="light"] .desktop-notes-panel{background:#f8fafc;border-color:#d2dce3;color:#293b4c}
   :root[data-theme="light"] .desktop-notes-search input{background:#e4eaf0;border-color:#c9d4df;color:#293b4c}
@@ -1337,7 +1337,7 @@ body.folder-tab-active .editor-footer{visibility:hidden}
   :root:is([data-theme="midnight"],[data-theme="nord"],[data-theme="forest"],[data-theme="rose"],[data-theme="solarized"]) .desktop-notes-search input{background:var(--palette-btn);border-color:var(--palette-border);color:var(--palette-text)}
 }
 
-@media(min-width:1101px){
+@media (width > 1100px) and (not (any-pointer:coarse)), (width > 1500px){
   #note-list .note-group-toggle.desktop-folder-current,
   #note-list .note-group-toggle.desktop-folder-current:hover{
     background:#3a3b40;color:#f5f7fa;border-radius:8px
@@ -1818,4 +1818,73 @@ body[data-ios-layout="true"] .desktop-notes-panel{display:none!important}
 @media(prefers-reduced-motion:reduce){
   .rich-editor [data-resize-handle],
   .rich-editor pre[data-code-block] [data-code-controls] button{transition:none!important}
+}
+
+/* Notes navigation uses system type independently of the user's writing font. */
+:root { --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+body[data-ios-layout="true"] :is(.ios-folders-screen,.ios-notes-screen,.mobile-note-title) { font-family:var(--sans); }
+.editor-pane .rich-editor { line-height:1.52; }
+.rich-editor [data-note-title="1"] {
+  font-size:1.65em; line-height:1.2; min-height:1.2em;
+  margin:0 0 .45em; font-weight:700; letter-spacing:-.022em;
+}
+
+@media (width > 1100px) and (not (any-pointer:coarse)), (width > 1500px) {
+  .app-shell,body.panel-hidden .app-shell {
+    width:100%; height:100dvh; max-height:100dvh; margin:0; border:0;
+    border-radius:0; box-shadow:none;
+    grid-template-columns:clamp(196px,16vw,248px) clamp(254px,21vw,328px) minmax(0,1fr)!important;
+  }
+  .sidebar .sidebar-head {
+    display:flex!important; align-items:center; height:56px; flex:none; padding:0 18px;
+  }
+  .sidebar-head h2 { margin:0; font:650 1.2rem/1.2 var(--sans); letter-spacing:-.025em; color:var(--ink); }
+  .sidebar-head .sidebar-close { display:none; }
+  .sidebar .side-scroll { padding-top:0; }
+  #quick-links .quick-link,.notes-heading #toggle-notes-list,#note-list .note-group-toggle,.pinned-folder-row .folder-item { font-size:.875rem; }
+  .desktop-notes-header { padding:3px 14px 9px; }
+  .desktop-notes-header h2 { font-size:1rem; letter-spacing:-.015em; }
+  .desktop-notes-search input,.desktop-notes-footer button { font-size:.875rem; }
+  .desktop-note-card { padding:10px 12px; min-height:60px; gap:3px; border-radius:8px; }
+  .desktop-note-card strong { font-size:.9375rem; font-weight:600; }
+  .desktop-note-meta { font-size:.8125rem; }
+  .editor-content,body.focus-mode .editor-content { padding:26px clamp(24px,3vw,54px); }
+  :root[data-theme="light"] .sidebar,:root[data-theme="light"] .sidebar-foot { background:#f5f5f7; }
+  :root[data-theme="light"] .desktop-notes-panel,:root[data-theme="light"] .editor-pane { background:#fff!important; }
+  :root[data-theme="light"] .desktop-note-card { color:#1d1d1f; border-color:#e5e5ea; }
+  :root[data-theme="light"] .desktop-note-card.selected { background:#fff0bb; }
+  :root[data-theme="light"] .desktop-notes-search input { background:#f2f2f4; border-color:#e1e1e5; color:#1d1d1f; }
+  :root[data-theme="light"] .desktop-notes-search input::placeholder { color:#66666b; }
+  :root[data-theme="light"] .desktop-notes-header h2,:root[data-theme="light"] .notes-heading #toggle-notes-list { color:#242426; }
+}
+
+@media (max-width:1100px), (any-pointer:coarse) and (max-width:1500px) {
+  .ios-folders-top { padding-top:calc(8px + env(safe-area-inset-top,0px)); }
+  .ios-list-top { padding-top:calc(8px + env(safe-area-inset-top,0px)); }
+  body[data-ios-layout="true"] .ios-folders-top h1,.ios-notes-scroll>h1 {
+    font-size:2.125rem; line-height:1.15; letter-spacing:-.032em; font-weight:700;
+  }
+  .ios-folders-top h1 { margin-top:12px; }
+  .ios-folders-scroll,.ios-notes-scroll { padding-top:8px; padding-bottom:calc(82px + env(safe-area-inset-bottom,0px)); }
+  .ios-folders-scroll h2,.ios-date-section>h2 { font-size:1.125rem; margin:8px 0; font-weight:650; }
+  .ios-folder-group,.ios-note-card { border-radius:14px; }
+  .ios-folder-line,.ios-folder-open { min-height:48px; }
+  .ios-folder-open { gap:11px; }
+  .ios-folder-open>svg { width:23px; height:23px; stroke-width:1.85; }
+  .ios-folder-line:after { left:34px; }
+  .ios-folder-name { font-weight:450; }
+  .ios-round-action,.ios-expand,.ios-pill-action,.ios-back-button { min-width:44px; min-height:44px; }
+  .ios-note-row { min-height:64px; padding:10px 0; gap:3px; text-align:start; }
+  .ios-note-row strong { font-size:1.0625rem; font-weight:600; }
+  .ios-note-details { font-size:.9375rem; }
+  #ios-list-count { margin-bottom:16px; font-size:.9375rem; }
+  .ios-date-section { margin-bottom:20px; }
+  body[data-ios-layout="true"] .ios-bottom-dock:not([hidden]) { height:48px; gap:8px; bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
+  .ios-search-pill { height:46px; padding-inline:14px; }
+  .ios-compose { flex-basis:48px; width:48px; height:48px; color:var(--ios-yellow); }
+}
+@media (max-width:760px) {
+  body[data-ios-layout="true"] .editor-toolbar { padding-top:calc(6px + env(safe-area-inset-top,0px)); }
+  body[data-ios-layout="true"] .editor-content { padding:16px max(20px,env(safe-area-inset-right)) 24px max(20px,env(safe-area-inset-left)); }
+  body[data-ios-layout="true"] .editor-toolbar .icon-button { min-width:44px; min-height:44px; }
 }
